@@ -53,8 +53,8 @@ coverage.xml
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# pyenv
-.python-version
+# pyenv (nao ignorar — usado pelo Render para fixar versao do Python)
+# .python-version
 
 # pipenv
 Pipfile.lock

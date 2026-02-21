@@ -2376,8 +2376,11 @@ def handle_disconnect():
 
 # ============================================================
 # Inicializacao (modulo carregado por gunicorn ou diretamente)
+# Roda em thread separada para que gunicorn possa fazer bind
+# na porta antes do Firebase responder.
 # ============================================================
-init_all()
+_init_thread = Thread(target=init_all, daemon=True)
+_init_thread.start()
 
 
 # ============================================================
