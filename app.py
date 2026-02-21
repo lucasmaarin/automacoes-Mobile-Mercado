@@ -1694,6 +1694,11 @@ def init_all():
         advanced_explorer = FirestoreStructureExplorer(db)
         simple_explorer = FirestoreSimpleExplorer(db)
         categorizer = ProductCategorizerAgent(db)
+        # Carrega credenciais de admin no cache
+        try:
+            _load_admin_creds()
+        except Exception as e:
+            logger.warning(f"Nao foi possivel carregar credenciais do Firestore: {e}")
         # Carrega chave OpenAI salva no Firestore (se existir)
         try:
             if db:
@@ -1716,9 +1721,13 @@ def init_all():
 # Autenticação de administrador
 # ============================================================
 
-def get_admin_credentials():
-    """Busca credenciais de admin no Firestore (Automacoes/admin > userAdmin / passAdmin).
-    Retorna (None, None) se o Firestore estiver indisponível ou o documento não existir."""
+# Cache em memória das credenciais de admin — evita chamada ao Firestore em cada login
+_admin_creds_cache: dict = {'user': None, 'passwd': None}
+
+
+def _load_admin_creds():
+    """Carrega credenciais do Firestore para o cache em memória."""
+    global _admin_creds_cache
     try:
         if db:
             doc = db.collection('Automacoes').document('admin').get()
@@ -1727,10 +1736,17 @@ def get_admin_credentials():
                 user = data.get('userAdmin', '').strip()
                 passwd = data.get('passAdmin', '').strip()
                 if user and passwd:
-                    return user, passwd
+                    _admin_creds_cache = {'user': user, 'passwd': passwd}
+                    logger.info("Credenciais de admin carregadas do Firestore")
+                    return
     except Exception as e:
-        logger.warning(f"Erro ao buscar credenciais do Firestore: {e}")
-    return None, None
+        logger.warning(f"Erro ao carregar credenciais do Firestore: {e}")
+    _admin_creds_cache = {'user': None, 'passwd': None}
+
+
+def get_admin_credentials():
+    """Retorna credenciais de admin do cache em memória (sem chamada ao Firestore)."""
+    return _admin_creds_cache.get('user'), _admin_creds_cache.get('passwd')
 
 PUBLIC_ROUTES = {'login', 'static'}
 
@@ -1803,6 +1819,8 @@ def update_credentials():
             'passAdmin': new_pass,
             'updated_at': datetime.now().isoformat(),
         }, merge=True)
+        _admin_creds_cache['user'] = new_user
+        _admin_creds_cache['passwd'] = new_pass
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Erro ao salvar credenciais: {e}")
