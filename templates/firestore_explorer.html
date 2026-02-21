@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Firestore Explorer Simples</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px; }
+    .container { max-width: 900px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+    h1 { text-align: center; }
+    input { width: 80%; padding: 10px; border-radius: 8px; border: 1px solid #ccc; }
+    button { padding: 10px 20px; margin: 10px 5px; border: none; border-radius: 8px; background: #067ae0; color: white; cursor: pointer; }
+    button:hover { background: #045ca6; }
+    pre { background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 8px; overflow-x: auto; max-height: 500px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Firestore Structure Explorer (Simples)</h1>
+    <input type="text" id="path" placeholder="Ex: estabelecimentos/XYZ/paymentMethods"/>
+    <button onclick="explore()">Explorar</button>
+    <button onclick="copyJSON()">Copiar JSON</button>
+    <div id="result"></div>
+  </div>
+
+  <script>
+    let lastJSON = null;
+
+    async function explore() {
+      const path = document.getElementById('path').value.trim();
+      if (!path) { alert("Digite um caminho válido!"); return; }
+
+      document.getElementById('result').innerHTML = "<p><b>Carregando...</b></p>";
+
+      try {
+        const res = await fetch("/api/explore", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: path, max_docs: 5 })
+        });
+
+        const data = await res.json();
+        if (data.success) {
+          lastJSON = data.data;
+          document.getElementById('result').innerHTML = `<pre>${JSON.stringify(lastJSON, null, 2)}</pre>`;
+        } else {
+          document.getElementById('result').innerHTML = `<p style="color:red;">Erro: ${data.error}</p>`;
+        }
+      } catch (err) {
+        document.getElementById('result').innerHTML = `<p style="color:red;">Falha: ${err}</p>`;
+      }
+    }
+
+    function copyJSON() {
+      if (!lastJSON) return;
+      navigator.clipboard.writeText(JSON.stringify(lastJSON, null, 2));
+      alert("JSON copiado!");
+    }
+  </script>
+</body>
+</html>

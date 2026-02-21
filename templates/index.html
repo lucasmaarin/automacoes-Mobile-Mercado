@@ -1,0 +1,1809 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automações Mobile Mercado</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        :root {
+            --bg: #f8f9fb;
+            --surface: #ffffff;
+            --surface-alt: #f1f3f9;
+            --border: #e2e5ef;
+            --border-hover: #c8cdd9;
+            --text: #1a1d2e;
+            --text-secondary: #5c6078;
+            --muted: #8b8fa6;
+            --accent: #4f6cf7;
+            --accent-hover: #3b55e6;
+            --accent-light: #eef1fe;
+            --green: #10b981;
+            --green-light: #ecfdf5;
+            --red: #ef4444;
+            --red-light: #fef2f2;
+            --orange: #f59e0b;
+            --orange-light: #fffbeb;
+            --radius: 8px;
+            --radius-lg: 12px;
+            --shadow-sm: 0 1px 3px rgba(15,23,42,.06);
+            --shadow: 0 2px 8px rgba(15,23,42,.08);
+            --shadow-lg: 0 8px 24px rgba(15,23,42,.1);
+            --mono: 'JetBrains Mono','Fira Code','Consolas','Monaco',monospace;
+            --transition: .2s cubic-bezier(.4,0,.2,1);
+        }
+
+        body.dark {
+            --bg: #0f1117;
+            --surface: #1a1d2e;
+            --surface-alt: #252840;
+            --border: #2e3250;
+            --border-hover: #3e4270;
+            --text: #e8eaf6;
+            --text-secondary: #9ba3c4;
+            --muted: #6b7194;
+            --accent-light: #1e2540;
+            --green-light: #0d2620;
+            --red-light: #2a1010;
+            --orange-light: #2a2010;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,.3);
+            --shadow: 0 2px 8px rgba(0,0,0,.35);
+            --shadow-lg: 0 8px 24px rgba(0,0,0,.4);
+        }
+
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: 'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 24px;
+            -webkit-font-smoothing: antialiased;
+        }
+        .app { max-width: 980px; margin: 0 auto; }
+
+        /* === Toast === */
+        .toast-container { position:fixed; top:20px; right:20px; z-index:9999; display:flex; flex-direction:column; gap:10px; }
+        .toast {
+            padding: 12px 18px;
+            border-radius: var(--radius);
+            font-size: .84rem;
+            font-weight: 500;
+            box-shadow: var(--shadow-lg);
+            animation: toastIn .3s cubic-bezier(.22,1,.36,1);
+            max-width: 380px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            backdrop-filter: blur(8px);
+        }
+        .toast .ico { font-size: 1rem; flex-shrink:0; }
+        .toast .close-toast { background:none; border:none; cursor:pointer; opacity:.4; font-size:1.1rem; padding:0 0 0 10px; color:inherit; transition:opacity .15s; }
+        .toast .close-toast:hover { opacity:.8; }
+        .toast-success { background: rgba(236,253,245,.95); color: #065f46; border-left: 3px solid var(--green); }
+        .toast-error { background: rgba(254,242,242,.95); color: #991b1b; border-left: 3px solid var(--red); }
+        .toast-warning { background: rgba(255,251,235,.95); color: #92400e; border-left: 3px solid var(--orange); }
+        .toast-info { background: rgba(238,241,254,.95); color: #3730a3; border-left: 3px solid var(--accent); }
+        @keyframes toastIn { from{transform:translateX(120%);opacity:0} to{transform:translateX(0);opacity:1} }
+        @keyframes toastOut { from{opacity:1} to{transform:translateX(120%);opacity:0} }
+
+        /* === Header === */
+        .app-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding: 16px 20px;
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border);
+        }
+        .app-header h1 {
+            font-size: 1.05rem;
+            font-weight: 700;
+            letter-spacing: -.02em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .app-header h1::before { content:''; display:inline-block; width:8px; height:8px; border-radius:2px; background:var(--accent); }
+        .conn-status {
+            font-size: .76rem;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all var(--transition);
+        }
+        .conn-status::before { content:''; width:7px; height:7px; border-radius:50%; }
+        .conn-ok { background: var(--green-light); color: #065f46; }
+        .conn-ok::before { background: var(--green); box-shadow: 0 0 6px rgba(16,185,129,.4); }
+        .conn-err { background: var(--red-light); color: #991b1b; }
+        .conn-err::before { background: var(--red); }
+
+        /* === Tabs === */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            background: var(--surface);
+            padding: 4px;
+            border-radius: var(--radius-lg);
+            margin-bottom: 20px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border);
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-size: .84rem;
+            font-weight: 600;
+            color: var(--muted);
+            transition: all var(--transition);
+        }
+        .tab-btn:hover { color: var(--text); background: var(--surface-alt); }
+        .tab-btn.active { background: var(--accent); color: #fff; box-shadow: 0 2px 8px rgba(79,108,247,.3); }
+        .tab-panel { display:none; animation: fadeUp .3s ease; }
+        .tab-panel.active { display:block; }
+        @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+        /* === Sub-tabs === */
+        .subtabs {
+            display: inline-flex;
+            background: var(--surface-alt);
+            padding: 3px;
+            border-radius: var(--radius);
+            margin-bottom: 16px;
+            border: 1px solid var(--border);
+        }
+        .stab {
+            padding: 7px 16px;
+            background: none;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: .8rem;
+            font-weight: 600;
+            color: var(--muted);
+            transition: all var(--transition);
+        }
+        .stab:hover { color: var(--text); }
+        .stab.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
+        .spanel { display:none; animation: fadeUp .3s ease; }
+        .spanel.active { display:block; }
+
+        /* === Card === */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 18px 20px;
+            margin-bottom: 14px;
+            box-shadow: var(--shadow-sm);
+            transition: box-shadow var(--transition);
+        }
+        .card-label {
+            font-size: .72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            color: var(--muted);
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .card-label .count {
+            background: var(--accent);
+            color: #fff;
+            font-size: .65rem;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: 700;
+            min-width: 22px;
+            text-align: center;
+        }
+
+        /* === Form === */
+        .field { margin-bottom: 10px; }
+        .field label {
+            display: block;
+            font-size: .76rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 5px;
+        }
+        .field input[type="text"],
+        .field input[type="number"] {
+            width: 100%;
+            padding: 9px 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            font-size: .84rem;
+            color: var(--text);
+            background: var(--surface);
+            transition: all var(--transition);
+        }
+        .field input:hover { border-color: var(--border-hover); }
+        .field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,108,247,.12); }
+        .row { display: flex; gap: 12px; align-items: flex-end; }
+        .row .field { flex:1; margin-bottom:0; }
+        .row .sm { flex: 0 0 90px; }
+        .check {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: .82rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 6px 0;
+        }
+        .check input {
+            margin: 0;
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent);
+        }
+
+        /* === Buttons === */
+        .btn {
+            padding: 8px 16px;
+            border-radius: var(--radius);
+            font-size: .8rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            transition: all var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+        .btn:hover { background: var(--surface-alt); border-color: var(--border-hover); }
+        .btn:active { transform: scale(.97); }
+        .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+        .btn-p { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .btn-p:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); box-shadow: 0 2px 8px rgba(79,108,247,.25); }
+        .btn-d { background: var(--red); color: #fff; border-color: var(--red); }
+        .btn-d:hover:not(:disabled) { background: #dc2626; box-shadow: 0 2px 8px rgba(239,68,68,.25); }
+        .btn-w { width: 100%; justify-content: center; padding: 11px; font-size: .88rem; border-radius: var(--radius-lg); }
+        .btn-ghost { border-color: transparent; background: transparent; color: var(--text-secondary); }
+        .btn-ghost:hover { background: var(--surface-alt); color: var(--text); }
+        .btn-group { display: flex; gap: 6px; flex-wrap: wrap; }
+
+        /* === Spinner === */
+        .spinner { width:15px; height:15px; border:2px solid rgba(255,255,255,.3); border-top-color:#fff; border-radius:50%; animation:spin .6s linear infinite; }
+        .spinner-dark { border-color:rgba(0,0,0,.1); border-top-color:var(--accent); }
+        @keyframes spin { to{transform:rotate(360deg)} }
+
+        /* === Categories === */
+        .cat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 6px;
+            max-height: 220px;
+            overflow-y: auto;
+            padding: 2px;
+        }
+        .cat-grid::-webkit-scrollbar { width: 5px; }
+        .cat-grid::-webkit-scrollbar-track { background: transparent; }
+        .cat-grid::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        .cat-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 11px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            font-size: .8rem;
+            cursor: pointer;
+            transition: all .15s;
+            user-select: none;
+        }
+        .cat-item:hover { background: var(--surface-alt); border-color: var(--border-hover); }
+        .cat-item.checked { background: var(--accent-light); border-color: rgba(79,108,247,.35); color: var(--accent); font-weight: 600; }
+        .cat-item input { margin:0; cursor:pointer; accent-color: var(--accent); }
+        .cat-item label { cursor:pointer; flex:1; pointer-events:none; }
+        .placeholder { text-align:center; padding:20px; color:var(--muted); font-size:.82rem; }
+
+        /* === Prompt === */
+        .prompt-section { margin-bottom: 14px; }
+        .prompt-hdr {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            padding: 12px 16px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            font-size: .82rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            user-select: none;
+            transition: all var(--transition);
+            box-shadow: var(--shadow-sm);
+        }
+        .prompt-hdr:hover { background: var(--surface-alt); }
+        .prompt-hdr .arr { transition: transform .25s; font-size: .65rem; color: var(--muted); }
+        .prompt-hdr.open .arr { transform: rotate(180deg); }
+        .prompt-hdr.open { border-radius: var(--radius-lg) var(--radius-lg) 0 0; border-bottom-color: transparent; }
+        .prompt-hdr .dot { width:7px; height:7px; border-radius:50%; background:var(--orange); margin-left:8px; display:none; transition: opacity var(--transition); }
+        .prompt-hdr .dot.show { display:inline-block; animation: pulse 2s ease infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+        .prompt-bd {
+            display: none;
+            border: 1px solid var(--border);
+            border-top: none;
+            border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+            padding: 16px;
+            background: var(--surface);
+            box-shadow: var(--shadow-sm);
+        }
+        .prompt-bd.open { display:block; }
+        .prompt-ta {
+            width: 100%;
+            min-height: 260px;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            font-family: var(--mono);
+            font-size: .78rem;
+            line-height: 1.6;
+            resize: vertical;
+            color: var(--text);
+            background: var(--surface-alt);
+            transition: border-color var(--transition);
+        }
+        .prompt-ta:focus { outline:none; border-color:var(--accent); background: var(--surface); box-shadow: 0 0 0 3px rgba(79,108,247,.08); }
+        .prompt-ft { display:flex; align-items:center; gap:8px; margin-top:10px; }
+        .prompt-ft .hint { margin-left:auto; font-size:.72rem; color:var(--muted); }
+        .prompt-ft .hint code { background:var(--surface-alt); padding:2px 6px; border-radius:4px; font-family:var(--mono); font-size:.7rem; }
+
+        /* === Progress === */
+        .progress-area { display:none; margin-top:14px; }
+        .progress-area.active { display:block; animation: fadeUp .3s ease; }
+        .pbar-wrap {
+            background: var(--surface-alt);
+            border-radius: var(--radius);
+            overflow: hidden;
+            height: 28px;
+            position: relative;
+            margin-bottom: 12px;
+            border: 1px solid var(--border);
+        }
+        .pbar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), #818cf8);
+            width: 0%;
+            transition: width .5s cubic-bezier(.4,0,.2,1);
+            position: relative;
+        }
+        .pbar-fill::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.15) 50%, transparent 100%);
+            animation: shimmer 2s infinite;
+        }
+        @keyframes shimmer { from{transform:translateX(-100%)} to{transform:translateX(100%)} }
+        .pbar-text { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:.75rem; font-weight:700; color:var(--text); }
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .stat {
+            text-align: center;
+            padding: 12px 4px 10px;
+            background: var(--surface);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-sm);
+        }
+        .stat-v { font-size: 1.5rem; font-weight: 800; color: var(--accent); line-height:1; }
+        .stat-v.green { color: var(--green); }
+        .stat-v.red { color: var(--red); }
+        .stat-l { font-size: .68rem; color: var(--muted); margin-top: 4px; font-weight: 500; }
+        .tokens-bar {
+            display: flex;
+            gap: 20px;
+            padding: 10px 14px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            margin-bottom: 12px;
+            font-size: .82rem;
+            box-shadow: var(--shadow-sm);
+        }
+        .tokens-bar strong { color: var(--text); font-weight: 700; }
+        .tokens-bar span { color: var(--text-secondary); font-weight: 500; }
+        .cur-item {
+            padding: 12px 14px;
+            background: var(--orange-light);
+            border: 1px solid #fde68a;
+            border-radius: var(--radius);
+            margin-bottom: 12px;
+            font-size: .82rem;
+            line-height: 1.7;
+            display: none;
+        }
+        .cur-item.show { display:block; }
+        .cur-item strong { font-weight: 700; }
+
+        /* === Log === */
+        .log-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            max-height: 180px;
+            overflow-y: auto;
+            padding: 8px;
+            box-shadow: var(--shadow-sm);
+        }
+        .log-box::-webkit-scrollbar { width: 5px; }
+        .log-box::-webkit-scrollbar-track { background: transparent; }
+        .log-box::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        .log-l {
+            padding: 4px 10px;
+            border-radius: 5px;
+            font-size: .74rem;
+            font-family: var(--mono);
+            margin-bottom: 3px;
+            line-height: 1.5;
+        }
+        .log-l.info { background: var(--accent-light); color: #3730a3; }
+        .log-l.success { background: var(--green-light); color: #065f46; }
+        .log-l.error { background: var(--red-light); color: #991b1b; }
+        .log-l.warning { background: var(--orange-light); color: #92400e; }
+
+        /* === Explorer === */
+        .json-out {
+            background: #1a1f36;
+            color: #c4caf8;
+            border-radius: var(--radius-lg);
+            padding: 16px;
+            max-height: 400px;
+            overflow: auto;
+            font-family: var(--mono);
+            font-size: .76rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+            margin-top: 12px;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,.2);
+            border: 1px solid #2d3555;
+        }
+        .json-out::-webkit-scrollbar { width: 6px; height: 6px; }
+        .json-out::-webkit-scrollbar-track { background: transparent; }
+        .json-out::-webkit-scrollbar-thumb { background: #3d4566; border-radius: 4px; }
+        .sugg-drop {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            max-height: 140px;
+            overflow-y: auto;
+            display: none;
+            margin-top: 4px;
+            position: absolute;
+            left: 0; right: 0;
+            z-index: 10;
+            box-shadow: var(--shadow-lg);
+        }
+        .sugg-opt {
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: .8rem;
+            border-bottom: 1px solid var(--surface-alt);
+            transition: background .1s;
+        }
+        .sugg-opt:hover { background: var(--accent-light); color: var(--accent); }
+        .sugg-opt:last-child { border-bottom:none; }
+        .field-rel { position:relative; }
+
+        /* === Separator line === */
+        .sep { height: 1px; background: var(--border); margin: 14px 0; }
+
+        /* === Establishment select === */
+        .est-sel {
+            width: 100%; padding: 8px 14px;
+            border: 1px solid var(--border); border-radius: var(--radius);
+            font-size: .9rem; font-family: inherit; color: var(--text);
+            background: var(--bg); outline: none; cursor: pointer;
+            transition: border-color var(--transition), box-shadow var(--transition);
+        }
+        .est-sel:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+        .est-custom { margin-top: 6px; }
+
+        /* === Daily counter === */
+        .daily-counter {
+            font-size: .75rem; padding: 5px 12px; border-radius: 20px;
+            background: var(--accent-light); color: var(--accent); font-weight: 600;
+            display: flex; align-items: center; gap: 6px; white-space: nowrap;
+        }
+        .daily-counter strong { font-weight: 700; }
+
+        /* === Category filter chips === */
+        .filter-chip {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-size: .76rem; cursor: pointer;
+            background: var(--surface-alt); padding: 4px 10px;
+            border-radius: 20px; border: 1px solid var(--border);
+            transition: all var(--transition);
+        }
+        .filter-chip input { accent-color: var(--accent); }
+        .filter-chip:has(input:checked) {
+            background: var(--accent-light); border-color: var(--accent); color: var(--accent);
+        }
+
+        /* === Agent help button + collapsible info === */
+        .agent-help-btn {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 32px; height: 32px; border-radius: 50%;
+            background: var(--accent-light); color: var(--accent);
+            font-size: .9rem; font-weight: 700; cursor: pointer;
+            border: 1.5px solid #c7d2fe; line-height: 1; user-select: none;
+            transition: background var(--transition), color var(--transition), box-shadow var(--transition);
+            flex-shrink: 0; box-shadow: 0 1px 4px rgba(79,108,247,.15);
+        }
+        .agent-help-btn:hover { background: var(--accent); color: #fff; box-shadow: 0 2px 10px rgba(79,108,247,.35); }
+        .agent-info {
+            display: none;
+            gap: 10px;
+            background: var(--accent-light);
+            border: 1px solid #c7d2fe;
+            border-radius: var(--radius);
+            padding: 12px 14px;
+            font-size: .82rem;
+            color: #3730a3;
+            line-height: 1.55;
+            margin-bottom: 2px;
+        }
+        .agent-info.open { display: flex; }
+        .agent-info svg { flex-shrink: 0; margin-top: 1px; }
+        .agent-info strong { font-weight: 700; display: block; margin-bottom: 2px; }
+
+        /* === Quota banner === */
+        .quota-banner {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            background: #fff5f5;
+            border-bottom: 2px solid #fca5a5;
+            padding: 10px 24px;
+            font-size: .85rem;
+            color: #b91c1c;
+            font-weight: 500;
+        }
+        .quota-banner.visible { display: flex; }
+        .quota-banner svg { flex-shrink: 0; }
+        .quota-banner a { color: #b91c1c; font-weight: 700; }
+        .quota-banner-close {
+            margin-left: auto; background: none; border: none;
+            cursor: pointer; color: #b91c1c; font-size: 1.1rem; line-height: 1;
+            opacity: .7;
+        }
+        .quota-banner-close:hover { opacity: 1; }
+
+        /* === Tour === */
+        #tourOverlay {
+            position: fixed; inset: 0; z-index: 9000;
+            pointer-events: none; display: none;
+        }
+        #tourOverlay.active { pointer-events: all; display: block; }
+        #tourSpotlight {
+            position: fixed; border-radius: 10px;
+            box-shadow: 0 0 0 9999px rgba(0,0,0,.58);
+            z-index: 9001; pointer-events: none;
+            transition: top .28s ease, left .28s ease, width .28s ease, height .28s ease;
+        }
+        #tourCard {
+            position: fixed; background: #fff;
+            border-radius: 14px;
+            box-shadow: 0 12px 48px rgba(15,23,42,.22), 0 2px 8px rgba(15,23,42,.08);
+            padding: 24px 26px 20px; width: 330px; z-index: 9002;
+            transition: top .28s ease, left .28s ease;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .tour-label {
+            font-size: .68rem; font-weight: 700; color: var(--accent);
+            text-transform: uppercase; letter-spacing: .07em; margin-bottom: 10px;
+        }
+        .tour-dots {
+            display: flex; gap: 5px; margin-bottom: 14px;
+        }
+        .tour-dot {
+            width: 7px; height: 7px; border-radius: 50%;
+            background: var(--border); transition: background .2s, transform .2s;
+        }
+        .tour-dot.active { background: var(--accent); transform: scale(1.25); }
+        #tourTitle {
+            font-size: 1.02rem; font-weight: 700; color: var(--text);
+            margin-bottom: 8px; letter-spacing: -.01em;
+        }
+        #tourText {
+            font-size: .84rem; color: var(--text-secondary);
+            line-height: 1.65; margin-bottom: 20px;
+        }
+        .tour-actions {
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .tour-skip {
+            font-size: .75rem; color: var(--muted); cursor: pointer;
+            background: none; border: none; font-family: inherit; padding: 0;
+        }
+        .tour-skip:hover { color: var(--text-secondary); text-decoration: underline; }
+        .tour-nav { display: flex; gap: 8px; }
+        .tour-btn-prev {
+            font-size: .82rem; color: var(--text-secondary); background: var(--surface-alt);
+            border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 14px;
+            cursor: pointer; font-family: inherit; font-weight: 500;
+        }
+        .tour-btn-prev:hover { background: var(--border); }
+        .tour-btn-next {
+            font-size: .82rem; color: #fff; background: var(--accent);
+            border: none; border-radius: var(--radius); padding: 8px 18px;
+            cursor: pointer; font-family: inherit; font-weight: 600;
+            box-shadow: 0 2px 8px rgba(79,108,247,.3);
+        }
+        .tour-btn-next:hover { background: var(--accent-hover); }
+    </style>
+</head>
+<body>
+    <div class="toast-container" id="toasts"></div>
+
+    <!-- Tour overlay -->
+    <div id="tourOverlay">
+        <div id="tourSpotlight" style="display:none"></div>
+        <div id="tourCard" style="display:none">
+            <div class="tour-label" id="tourStepLabel">Passo 1 de 7</div>
+            <div class="tour-dots" id="tourDots"></div>
+            <div id="tourTitle"></div>
+            <p id="tourText"></p>
+            <div class="tour-actions">
+                <button class="tour-skip" onclick="Tour.skip()">Pular tour</button>
+                <div class="tour-nav">
+                    <button class="tour-btn-prev" id="tourPrev" onclick="Tour.prev()">Anterior</button>
+                    <button class="tour-btn-next" id="tourNext" onclick="Tour.next()">Próximo</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="quota-banner" id="quotaBanner">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span id="quotaBannerMsg">Os créditos da API OpenAI acabaram. Verifique o saldo em <a href="https://platform.openai.com/account/billing" target="_blank">platform.openai.com</a>.</span>
+        <button class="quota-banner-close" onclick="document.getElementById('quotaBanner').classList.remove('visible')" title="Fechar">&times;</button>
+    </div>
+
+    <div class="app">
+        <div class="app-header">
+            <h1>Automações Mobile Mercado</h1>
+            <div style="display:flex;align-items:center;gap:10px">
+                <div class="daily-counter" title="Uso total de tokens hoje (todos os agentes)">
+                    <span>Hoje:</span>
+                    <strong id="dailyTokens">0</strong> tokens &bull;
+                    <strong id="dailyCost">$0.0000</strong>
+                </div>
+                <span class="conn-status conn-err" id="connBadge">Desconectado</span>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('renamer')">Padronizador de Nomes</button>
+            <button class="tab-btn" onclick="switchTab('explorer')">Explorador Firestore</button>
+            <button class="tab-btn" onclick="switchTab('categorizer')">Categorizador de Produtos</button>
+            <button class="tab-btn" onclick="switchTab('settings')">Configuracoes</button>
+        </div>
+
+        <!-- TAB: Renamer -->
+        <div class="tab-panel active" id="tab-renamer">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+                <span class="agent-help-btn" onclick="toggleHelp('renamerHelp')" title="Como funciona?">?</span>
+            </div>
+            <div class="agent-info" id="renamerHelp">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <div>
+                    <strong>Padronizador de Nomes</strong>
+                    Usa IA para reescrever e padronizar os nomes dos produtos do estabelecimento selecionado.
+                    Carregue as categorias, selecione quais deseja processar e clique em Iniciar.
+                    Use <em>Dry Run</em> para visualizar as mudancas sem salvar no Firestore.
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-label">Configuracoes</div>
+                <div class="field">
+                    <label>Estabelecimento</label>
+                    <select id="renEstSel" class="est-sel" onchange="handleEstChange('renEstSel','renEstCustom')">
+                        <option value="estabelecimento-teste" selected>Estabelecimento Teste</option>
+                        <option value="jQQjHTCc2zW1tuZMQzGF">Zero Grau</option>
+                        <option value="__custom__">Personalizado...</option>
+                    </select>
+                    <input type="text" id="renEstCustom" class="est-custom" style="display:none" placeholder="ID personalizado" spellcheck="false">
+                </div>
+                <div class="row" style="margin-top:4px">
+                    <div class="field">
+                        <label>Delay entre produtos (s)</label>
+                        <input type="number" id="delay" value="0" min="0" step="0.1">
+                    </div>
+                    <div class="field" style="flex:0 0 auto;padding-bottom:2px">
+                        <label class="check"><input type="checkbox" id="dryRun"> Modo de Teste (Dry Run)</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                    <div class="card-label" style="margin-bottom:0">Categorias <span class="count" id="catCount" style="display:none">0</span></div>
+                    <div class="btn-group">
+                        <button class="btn btn-p" id="btnLoadCats" onclick="Renamer.loadCategories()" style="display:flex;align-items:center;gap:5px">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.8"/></svg>
+                            Carregar
+                        </button>
+                        <button class="btn btn-ghost" onclick="Renamer.selectAll(true)">Todas</button>
+                        <button class="btn btn-ghost" onclick="Renamer.selectAll(false)">Limpar</button>
+                    </div>
+                </div>
+                <div id="catGrid"><div class="placeholder">Clique em "Carregar" para buscar as categorias</div></div>
+            </div>
+
+            <div class="prompt-section">
+                <div class="prompt-hdr" id="promptHdr" onclick="Renamer.togglePrompt()">
+                    <span>Instrucoes da IA <span class="dot" id="promptDot" title="Prompt modificado"></span></span>
+                    <span class="arr">&#9660;</span>
+                </div>
+                <div class="prompt-bd" id="promptBd">
+                    <textarea class="prompt-ta" id="promptTa" placeholder="Carregando..." oninput="Renamer.onPromptChange()" spellcheck="false"></textarea>
+                    <div class="prompt-ft">
+                        <button class="btn btn-p" onclick="Renamer.savePrompt()">Salvar no Firestore</button>
+                        <button class="btn btn-ghost" onclick="Renamer.restorePrompt()">Restaurar Padrao</button>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn btn-p btn-w" id="btnStart" onclick="Renamer.toggle()">Iniciar</button>
+
+            <div class="progress-area" id="progressArea">
+                <div class="cur-item" id="curItem"><div id="curInfo"></div></div>
+                <div class="pbar-wrap"><div class="pbar-fill" id="pbar"></div><div class="pbar-text" id="ptext">0%</div></div>
+                <div class="tokens-bar">
+                    <span>Tokens: <strong id="tokensVal">0</strong></span>
+                    <span>Custo: <strong id="costVal">$0.00</strong></span>
+                </div>
+                <div class="stats-row">
+                    <div class="stat"><div class="stat-v" id="sTotal">0</div><div class="stat-l">Total</div></div>
+                    <div class="stat"><div class="stat-v" id="sProc">0</div><div class="stat-l">Processados</div></div>
+                    <div class="stat"><div class="stat-v green" id="sUpd">0</div><div class="stat-l">Atualizados</div></div>
+                    <div class="stat"><div class="stat-v" id="sUnch">0</div><div class="stat-l">Inalterados</div></div>
+                    <div class="stat"><div class="stat-v red" id="sErr">0</div><div class="stat-l">Erros</div></div>
+                </div>
+                <div class="log-box" id="renamerLog"><div class="log-l info">Aguardando...</div></div>
+                <div id="renUndo" style="display:none;margin-top:10px;text-align:center">
+                    <button class="btn btn-ghost" style="color:var(--orange);border-color:var(--orange)" onclick="Renamer.undo()">
+                        &#8635; Desfazer ultima execucao (<span id="renUndoCount">0</span> produtos)
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: Categorizador -->
+        <div class="tab-panel" id="tab-categorizer">
+            <div class="subtabs" id="catSubTabs">
+                <button class="stab active" onclick="switchCatSub('auto')">Automatico</button>
+                <button class="stab" onclick="switchCatSub('dirigido')">Dirigido</button>
+            </div>
+
+            <!-- SUB: Automatico -->
+            <div class="spanel active" id="catsubtab-auto">
+                <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+                    <span class="agent-help-btn" onclick="toggleHelp('catAutoHelp')" title="Como funciona?">?</span>
+                </div>
+                <div class="agent-info" id="catAutoHelp">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <div>
+                        <strong>Categorizador Automatico</strong>
+                        Analisa o nome de cada produto e define automaticamente a <em>categoria</em> e a <em>subcategoria</em> mais adequada,
+                        escolhendo entre todas as opcoes disponiveis no Firestore — <strong>exceto Mercearia</strong>, que e gerenciada pelo modo Dirigido.
+                        Ideal para categorizar o restante do catalogo. Use <em>Dry Run</em> para testar sem salvar.
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-label">Configuracao</div>
+                    <div class="row">
+                        <div class="field">
+                            <label>Estabelecimento</label>
+                            <select id="catEstSel" class="est-sel" onchange="handleEstChange('catEstSel','catEstCustom')">
+                                <option value="estabelecimento-teste" selected>Estabelecimento Teste</option>
+                                <option value="jQQjHTCc2zW1tuZMQzGF">Zero Grau</option>
+                                <option value="__custom__">Personalizado...</option>
+                            </select>
+                            <input type="text" id="catEstCustom" class="est-custom" style="display:none" placeholder="ID personalizado" spellcheck="false">
+                        </div>
+                        <div class="field sm"><label>Delay (s)</label><input type="number" id="catDelay" value="0.5" min="0" max="10" step="0.1"></div>
+                    </div>
+                    <div style="margin-top:8px">
+                        <label style="display:flex;align-items:center;gap:8px;font-size:.84rem;color:var(--text-secondary);cursor:pointer">
+                            <input type="checkbox" id="catDryRun" style="width:15px;height:15px;accent-color:var(--accent)"> Modo Dry Run (sem salvar)
+                        </label>
+                    </div>
+                </div>
+                <div class="prompt-section">
+                    <div class="prompt-hdr" id="catPromptHdr" onclick="Cat.togglePrompt()">
+                        <span>Instrucoes da IA <span class="dot" id="catPromptDot" title="Prompt modificado"></span></span>
+                        <span class="arr">&#9660;</span>
+                    </div>
+                    <div class="prompt-bd" id="catPromptBd">
+                        <textarea class="prompt-ta" id="catPromptTa" placeholder="Carregando..." oninput="Cat.onPromptChange()" spellcheck="false"></textarea>
+                        <div class="prompt-ft">
+                            <button class="btn btn-p" onclick="Cat.savePrompt()">Salvar no Firestore</button>
+                            <button class="btn btn-ghost" onclick="Cat.restorePrompt()">Restaurar Padrao</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card" style="text-align:center">
+                    <button class="btn btn-p" id="catBtn" onclick="Cat.toggle()" style="min-width:180px">Iniciar Categorizacao</button>
+                </div>
+                <div class="card" id="catProgressCard" style="display:none">
+                    <div class="card-label">Progresso</div>
+                    <div class="prog-wrap"><div class="prog-bar" id="catProg" style="width:0%"></div></div>
+                    <div style="font-size:.8rem;color:var(--muted);margin-top:6px;text-align:center" id="catProgLabel">0 / 0</div>
+                    <div style="font-size:.78rem;color:var(--text-secondary);margin-top:6px;text-align:center" id="catCurrent"></div>
+                    <div class="stats-grid" style="margin-top:12px">
+                        <div class="stat"><div class="stat-v" id="catTotal">0</div><div class="stat-l">Total</div></div>
+                        <div class="stat"><div class="stat-v" id="catProc">0</div><div class="stat-l">Processados</div></div>
+                        <div class="stat"><div class="stat-v green" id="catUpd">0</div><div class="stat-l">Atualizados</div></div>
+                        <div class="stat"><div class="stat-v red" id="catErr">0</div><div class="stat-l">Erros</div></div>
+                    </div>
+                    <div style="font-size:.78rem;color:var(--muted);margin-top:8px;text-align:right" id="catCost"></div>
+                </div>
+                <div class="log-box" id="catLog"><div class="log-l info">Aguardando...</div></div>
+                <div id="catUndo" style="display:none;margin-top:10px;text-align:center">
+                    <button class="btn btn-ghost" style="color:var(--orange);border-color:var(--orange)" onclick="Cat.undo()">
+                        &#8635; Desfazer ultima execucao (<span id="catUndoCount">0</span> produtos)
+                    </button>
+                </div>
+            </div>
+
+            <!-- SUB: Dirigido -->
+            <div class="spanel" id="catsubtab-dirigido">
+                <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+                    <span class="agent-help-btn" onclick="toggleHelp('catDirHelp')" title="Como funciona?">?</span>
+                </div>
+                <div class="agent-info" id="catDirHelp">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <div>
+                        <strong>Categorizador Dirigido — Mercearia</strong>
+                        <strong>Padrao:</strong> define a subcategoria correta nos produtos que ja sao de Mercearia.<br>
+                        <strong>Opcional:</strong> marque "Avaliar outros produtos" para que a IA tambem analise produtos de outras categorias e atribua Mercearia quando fizer sentido.<br>
+                        Fluxo: <strong>1.</strong> Selecione o estabelecimento → <strong>2.</strong> "Carregar Categorias" → <strong>3.</strong> Escolha a categoria alvo → <strong>4.</strong> Inicie.
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-label">Configuracao</div>
+                    <div class="row">
+                        <div class="field">
+                            <label>Estabelecimento</label>
+                            <select id="catDirEstSel" class="est-sel" onchange="handleEstChange('catDirEstSel','catDirEstCustom')">
+                                <option value="estabelecimento-teste" selected>Estabelecimento Teste</option>
+                                <option value="jQQjHTCc2zW1tuZMQzGF">Zero Grau</option>
+                                <option value="__custom__">Personalizado...</option>
+                            </select>
+                            <input type="text" id="catDirEstCustom" class="est-custom" style="display:none" placeholder="ID personalizado" spellcheck="false">
+                        </div>
+                        <div class="field sm"><label>Delay (s)</label><input type="number" id="catDirDelay" value="0.5" min="0" max="10" step="0.1"></div>
+                    </div>
+
+                    <div class="field" style="margin-top:10px">
+                        <label style="margin-bottom:6px">Categoria Alvo</label>
+                        <button class="btn btn-p" style="width:100%;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:6px" onclick="CatDir.loadCategories()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.8"/></svg>
+                            Carregar Categorias
+                        </button>
+                        <select id="catDirTarget" class="est-sel">
+                            <option value="">-- Carregue as categorias primeiro --</option>
+                        </select>
+                    </div>
+
+                    <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+                        <label style="display:flex;align-items:center;gap:8px;font-size:.84rem;color:var(--text-secondary);cursor:pointer">
+                            <input type="checkbox" id="catDirIncludeOthers" style="width:15px;height:15px;accent-color:var(--accent)">
+                            Avaliar outros produtos e atribuir categoria quando fizer sentido
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;font-size:.84rem;color:var(--text-secondary);cursor:pointer">
+                            <input type="checkbox" id="catDirDryRun" style="width:15px;height:15px;accent-color:var(--accent)">
+                            Modo Dry Run (sem salvar)
+                        </label>
+                    </div>
+                </div>
+
+                <div class="card" style="text-align:center">
+                    <button class="btn btn-p" id="catDirBtn" onclick="CatDir.toggle()" style="min-width:180px">Iniciar Modo Dirigido</button>
+                </div>
+
+                <div class="card" id="catDirProgressCard" style="display:none">
+                    <div class="card-label">Progresso</div>
+                    <div class="prog-wrap"><div class="prog-bar" id="catDirProg" style="width:0%"></div></div>
+                    <div style="font-size:.8rem;color:var(--muted);margin-top:6px;text-align:center" id="catDirProgLabel">0 / 0</div>
+                    <div style="font-size:.78rem;color:var(--text-secondary);margin-top:6px;text-align:center" id="catDirCurrent"></div>
+                    <div class="stats-grid" style="margin-top:12px">
+                        <div class="stat"><div class="stat-v" id="catDirTotal">0</div><div class="stat-l">Total</div></div>
+                        <div class="stat"><div class="stat-v" id="catDirProc">0</div><div class="stat-l">Processados</div></div>
+                        <div class="stat"><div class="stat-v green" id="catDirUpd">0</div><div class="stat-l">Atualizados</div></div>
+                        <div class="stat"><div class="stat-v" id="catDirSkip">0</div><div class="stat-l">Ignorados</div></div>
+                        <div class="stat"><div class="stat-v red" id="catDirErr">0</div><div class="stat-l">Erros</div></div>
+                    </div>
+                    <div style="font-size:.78rem;color:var(--muted);margin-top:8px;text-align:right" id="catDirCost"></div>
+                </div>
+
+                <div class="log-box" id="catDirLog"><div class="log-l info">Aguardando...</div></div>
+                <div id="catDirUndo" style="display:none;margin-top:10px;text-align:center">
+                    <button class="btn btn-ghost" style="color:var(--orange);border-color:var(--orange)" onclick="CatDir.undo()">
+                        &#8635; Desfazer ultima execucao (<span id="catDirUndoCount">0</span> produtos)
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: Explorer -->
+        <div class="tab-panel" id="tab-explorer">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+                <span class="agent-help-btn" onclick="toggleHelp('explorerHelp')" title="Como funciona?">?</span>
+            </div>
+            <div class="agent-info" id="explorerHelp">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <div>
+                    <strong>Explorador Firestore</strong>
+                    Consulta colecoes e documentos do Firestore em tempo real.
+                    Use o <em>Rapido</em> para buscar um caminho simples (ex: <code style="font-size:.8rem;background:#e0e7ff;padding:1px 5px;border-radius:3px">estabelecimentos/ID/Products</code>).
+                    Use o <em>Avancado</em> para filtros, ordenacao e busca por campos especificos.
+                </div>
+            </div>
+            <div class="subtabs">
+                <button class="stab active" onclick="switchSub('simple')">Rapido</button>
+                <button class="stab" onclick="switchSub('advanced')">Avancado</button>
+            </div>
+
+            <div class="spanel active" id="subtab-simple">
+                <div class="card">
+                    <div class="card-label">Explorador Rapido</div>
+                    <div class="row" style="margin-bottom:12px">
+                        <div class="field"><label>Caminho</label><input type="text" id="sPath" placeholder="estabelecimentos/ID/Products" spellcheck="false"></div>
+                        <div class="field sm"><label>Max</label><input type="number" id="sMax" value="5" min="1" max="50"></div>
+                        <button class="btn btn-p" onclick="SExp.explore()" style="margin-bottom:0;align-self:flex-end">Explorar</button>
+                    </div>
+                    <div class="btn-group"><button class="btn btn-ghost" onclick="SExp.copy()">Copiar JSON</button></div>
+                </div>
+                <div class="json-out" id="sResult">Os resultados aparecerao aqui...</div>
+            </div>
+
+            <div class="spanel" id="subtab-advanced">
+                <div class="card">
+                    <div class="card-label">Explorador Avancado</div>
+                    <div class="row" style="margin-bottom:12px">
+                        <div class="field field-rel"><label>Caminho</label><input type="text" id="aPath" placeholder="estabelecimentos/ID/Products" oninput="AExp.onInput()" spellcheck="false"><div class="sugg-drop" id="aSugg"></div></div>
+                        <div class="field sm"><label>Max</label><input type="number" id="aMax" value="10" min="1" max="50"></div>
+                        <button class="btn btn-p" onclick="AExp.explore()" style="margin-bottom:0;align-self:flex-end">Explorar</button>
+                    </div>
+                    <div class="btn-group"><button class="btn btn-ghost" onclick="AExp.copy()">Copiar JSON</button><button class="btn btn-ghost" onclick="AExp.cache()">Ver Cache</button></div>
+                </div>
+                <div class="json-out" id="aResult">Os resultados aparecerao aqui...</div>
+                <div class="log-box" id="explorerLog" style="margin-top:12px"><div class="log-l info">Aguardando...</div></div>
+            </div>
+        </div>
+        <!-- TAB: Settings -->
+        <div class="tab-panel" id="tab-settings">
+            <div class="card" style="margin-bottom:16px">
+                <div class="card-label">Credenciais de Acesso</div>
+                <p style="font-size:.82rem;color:var(--text-secondary);margin-bottom:14px">
+                    Altere o usuario e senha utilizados no login. Voce sera redirecionado para o login apos salvar.
+                </p>
+                <div style="display:grid;gap:10px;max-width:400px">
+                    <div class="field">
+                        <label>Novo usuario</label>
+                        <input type="text" id="settUser" autocomplete="off" spellcheck="false" placeholder="novo usuario">
+                    </div>
+                    <div class="field">
+                        <label>Nova senha</label>
+                        <input type="password" id="settPass" autocomplete="new-password" placeholder="nova senha">
+                    </div>
+                    <div class="field">
+                        <label>Confirmar senha</label>
+                        <input type="password" id="settPassConfirm" autocomplete="new-password" placeholder="repita a senha">
+                    </div>
+                    <button class="btn btn-p" style="width:fit-content" onclick="Settings.saveCredentials()">Salvar credenciais</button>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom:16px">
+                <div class="card-label">Chave API OpenAI</div>
+                <p style="font-size:.82rem;color:var(--text-secondary);margin-bottom:14px">
+                    Chave atual: <code id="settKeyPreview" style="font-family:var(--mono);font-size:.8rem;background:var(--surface-alt);padding:2px 6px;border-radius:4px">nao configurada</code>
+                </p>
+                <div style="display:grid;gap:10px;max-width:400px">
+                    <div class="field">
+                        <label>Nova chave</label>
+                        <div style="position:relative">
+                            <input type="password" id="settApiKey" autocomplete="off" spellcheck="false" placeholder="sk-..." style="padding-right:40px;width:100%">
+                            <button onclick="Settings.toggleKeyVisibility()" title="Mostrar/ocultar" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:1rem;padding:0;line-height:1" id="settEyeBtn">&#128065;</button>
+                        </div>
+                    </div>
+                    <button class="btn btn-p" style="width:fit-content" onclick="Settings.saveApiKey()">Salvar chave</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-label">Tema</div>
+                <div style="display:flex;align-items:center;gap:14px;margin-top:6px">
+                    <label class="toggle-label" for="darkToggle" style="display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none">
+                        <div style="position:relative;width:44px;height:24px">
+                            <input type="checkbox" id="darkToggle" onchange="Settings.toggleTheme()" style="opacity:0;width:0;height:0;position:absolute">
+                            <span id="darkTrack" style="position:absolute;inset:0;background:var(--border);border-radius:12px;transition:.2s"></span>
+                            <span id="darkThumb" style="position:absolute;left:3px;top:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></span>
+                        </div>
+                        <span id="darkLabel" style="font-size:.9rem;color:var(--text)">Tema claro</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    const API = window.location.origin;
+    let socket, isRunning = false;
+    const $ = id => document.getElementById(id);
+
+    // === Toast ===
+    const toastIcons = { success:'\u2713', error:'\u2717', warning:'\u26A0', info:'\u2139' };
+    function toast(msg, type='info') {
+        const c = $('toasts'), t = document.createElement('div');
+        t.className = 'toast toast-' + type;
+        t.innerHTML = '<span class="ico">'+(toastIcons[type]||'')+' </span><span>' + msg + '</span><button class="close-toast" onclick="this.parentElement.remove()">&times;</button>';
+        c.appendChild(t);
+        setTimeout(() => { if(t.parentElement) { t.style.animation='toastOut .3s ease forwards'; setTimeout(()=>t.remove(),300); } }, 4000);
+    }
+
+    // === Tabs ===
+    const TAB_ORDER = ['renamer', 'explorer', 'categorizer', 'settings'];
+    function switchTab(n) {
+        const idx = TAB_ORDER.indexOf(n);
+        document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', i===idx));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        $('tab-'+n).classList.add('active');
+    }
+    function switchSub(n) {
+        document.querySelectorAll('#tab-explorer .stab').forEach((b,i) => b.classList.toggle('active', n==='simple'?i===0:i===1));
+        document.querySelectorAll('#tab-explorer .spanel').forEach(p => p.classList.remove('active'));
+        $('subtab-'+n).classList.add('active');
+    }
+    function switchCatSub(n) {
+        document.querySelectorAll('#catSubTabs .stab').forEach((b,i) => b.classList.toggle('active', n==='auto'?i===0:i===1));
+        document.querySelectorAll('#tab-categorizer > .spanel').forEach(p => p.classList.remove('active'));
+        $('catsubtab-'+n).classList.add('active');
+    }
+
+    // === Help toggle ===
+    function toggleHelp(id) {
+        document.getElementById(id).classList.toggle('open');
+    }
+
+    // === Establishment helpers ===
+    function handleEstChange(selId, inputId) {
+        $(inputId).style.display = $(selId).value === '__custom__' ? '' : 'none';
+    }
+    function getEstId(selId, inputId) {
+        const v = $(selId).value;
+        return v === '__custom__' ? ($(inputId).value.trim() || '') : v;
+    }
+
+    // === Daily stats ===
+    function updateDailyStats(d) {
+        if(!d) return;
+        $('dailyTokens').textContent = (d.tokens||0).toLocaleString();
+        $('dailyCost').textContent = '$'+(d.cost||0).toFixed(4);
+    }
+
+    // === WebSocket ===
+    function initWS() {
+        socket = io(API);
+        socket.on('connect', () => { $('connBadge').className='conn-status conn-ok'; $('connBadge').textContent='Conectado'; });
+        socket.on('disconnect', () => { $('connBadge').className='conn-status conn-err'; $('connBadge').textContent='Desconectado'; });
+        socket.on('renamer_log_update', d => addLog('renamerLog', d.message, d.level));
+        socket.on('renamer_progress_update', d => Renamer.progress(d.progress, d.current_product));
+        socket.on('renamer_status_update', d => { isRunning=d.running; Renamer.progress(d.progress, d.current_product); Renamer.btnState(); });
+        socket.on('renamer_logs_update', d => { if(d.logs?.length){ $('renamerLog').innerHTML=''; d.logs.forEach(l=>addLog('renamerLog',l.message,l.level)); }});
+        socket.on('explorer_log_update', d => addLog('explorerLog', d.message, d.level));
+        socket.on('explorer_logs_update', d => { if(d.logs?.length){ $('explorerLog').innerHTML=''; d.logs.forEach(l=>addLog('explorerLog',l.message,l.level)); }});
+        socket.on('categorizer_log_update', d => addLog('catLog', d.message, d.level));
+        socket.on('categorizer_progress_update', d => Cat.progress(d.progress, d.current_product));
+        socket.on('categorizer_status_update', d => { Cat.progress(d.progress, d.current_product); Cat.btnState(d.running); });
+        socket.on('categorizer_logs_update', d => { if(d.logs?.length){ $('catLog').innerHTML=''; d.logs.forEach(l=>addLog('catLog',l.message,l.level)); }});
+        socket.on('categorizer_targeted_log_update', d => addLog('catDirLog', d.message, d.level));
+        socket.on('categorizer_targeted_progress_update', d => CatDir.progress(d.progress, d.current_product));
+        socket.on('categorizer_targeted_status_update', d => { CatDir.progress(d.progress, d.current_product); CatDir.btnState(d.running); });
+        socket.on('categorizer_targeted_logs_update', d => { if(d.logs?.length){ $('catDirLog').innerHTML=''; d.logs.forEach(l=>addLog('catDirLog',l.message,l.level)); }});
+        socket.on('daily_stats_update', d => updateDailyStats(d));
+        socket.on('openai_quota_exceeded', d => {
+            const banner = document.getElementById('quotaBanner');
+            if(d?.message) document.getElementById('quotaBannerMsg').innerHTML =
+                d.message + ' &mdash; <a href="https://platform.openai.com/account/billing" target="_blank">Verificar saldo</a>';
+            banner.classList.add('visible');
+        });
+    }
+
+    function addLog(id, msg, type) {
+        const s=$(id), d=document.createElement('div');
+        d.className='log-l '+(type||'info');
+        d.textContent=new Date().toLocaleTimeString()+' '+msg;
+        s.appendChild(d); s.scrollTop=s.scrollHeight;
+    }
+
+    // === Renamer ===
+    const Renamer = {
+        _loaded: false, _default: null, _saved: null, _selectedCount: 0,
+
+        togglePrompt() {
+            $('promptHdr').classList.toggle('open');
+            $('promptBd').classList.toggle('open');
+        },
+
+        async loadPrompt() {
+            try {
+                const r = await (await fetch(API+'/api/renamer/prompt')).json();
+                if(r.success) { $('promptTa').value=r.prompt; this._default=r.default_prompt; this._saved=r.prompt; this._loaded=true; this.checkPromptDirty(); }
+            } catch(e) { $('promptTa').value='Erro: '+e.message; }
+        },
+
+        onPromptChange() { this.checkPromptDirty(); },
+
+        checkPromptDirty() {
+            const dirty = this._saved && $('promptTa').value.trim() !== this._saved.trim();
+            $('promptDot').classList.toggle('show', dirty);
+        },
+
+        restorePrompt() {
+            if(this._default) { $('promptTa').value=this._default; this.checkPromptDirty(); toast('Prompt padrao restaurado','info'); }
+            else this.loadPrompt();
+        },
+
+        async savePrompt() {
+            const p = $('promptTa').value.trim();
+            if(!p) { toast('Prompt vazio','error'); return; }
+            try {
+                const r = await (await fetch(API+'/api/renamer/prompt',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:p})})).json();
+                if(r.success) { this._saved=p; this.checkPromptDirty(); toast('Prompt salvo no Firestore','success'); }
+                else toast('Erro: '+r.error,'error');
+            } catch(e) { toast('Erro: '+e.message,'error'); }
+        },
+
+        async loadCategories() {
+            const estId = getEstId('renEstSel','renEstCustom');
+            if(!estId) { toast('Selecione o estabelecimento','warning'); return; }
+            const grid=$('catGrid'), btn=$('btnLoadCats');
+            btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Carregando';
+            grid.innerHTML='<div class="placeholder">Buscando categorias...</div>';
+            try {
+                const r = await (await fetch(API+'/api/renamer/categories?estabelecimento_id='+encodeURIComponent(estId))).json();
+                if(r.success && r.categories.length) {
+                    grid.innerHTML=''; grid.className='cat-grid';
+                    r.categories.forEach(cat => {
+                        const id='c-'+cat.replace(/\s/g,'-');
+                        const item=document.createElement('div'); item.className='cat-item';
+                        item.innerHTML='<input type="checkbox" class="ccb" id="'+id+'" value="'+cat+'" onchange="Renamer.updateCount()"><label for="'+id+'">'+cat+'</label>';
+                        item.onclick = e => { if(e.target.tagName!=='INPUT') { const cb=item.querySelector('input'); cb.checked=!cb.checked; Renamer.updateCount(); }};
+                        grid.appendChild(item);
+                    });
+                    this.updateCount();
+                    toast(r.categories.length+' categorias carregadas','success');
+                } else { grid.innerHTML='<div class="placeholder">Nenhuma categoria encontrada</div>'; grid.className=''; }
+            } catch(e) { grid.innerHTML='<div class="placeholder">Erro: '+e.message+'</div>'; grid.className=''; toast('Erro ao carregar','error'); }
+            btn.disabled=false; btn.innerHTML='Carregar';
+        },
+
+        updateCount() {
+            const n = document.querySelectorAll('.ccb:checked').length;
+            const badge = $('catCount');
+            badge.textContent = n;
+            badge.style.display = n > 0 ? 'inline' : 'none';
+            document.querySelectorAll('.cat-item').forEach(item => {
+                item.classList.toggle('checked', item.querySelector('input').checked);
+            });
+        },
+
+        selectAll(v) { document.querySelectorAll('.ccb').forEach(c=>c.checked=v); this.updateCount(); },
+
+        async toggle() {
+            if(isRunning) {
+                try { await fetch(API+'/api/renamer/stop',{method:'POST'}); toast('Parada solicitada','warning'); } catch(e) { toast('Erro: '+e.message,'error'); }
+                return;
+            }
+            const estId=getEstId('renEstSel','renEstCustom');
+            const delay=parseFloat($('delay').value);
+            const dryRun=$('dryRun').checked;
+            const cats=[...document.querySelectorAll('.ccb:checked')].map(c=>c.value);
+            const prompt=$('promptTa').value.trim();
+
+            if(!estId) { toast('Selecione o estabelecimento','warning'); return; }
+            if(!cats.length) { toast('Selecione ao menos uma categoria','warning'); return; }
+
+
+            const btn=$('btnStart');
+            btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Iniciando...';
+
+            const payload = { estabelecimento_id:estId, delay, dry_run:dryRun, categories:cats };
+            if(prompt) payload.custom_prompt = prompt;
+            try {
+                const r = await fetch(API+'/api/renamer/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+                if(r.ok) { $('progressArea').classList.add('active'); $('renamerLog').innerHTML=''; toast('Automacao iniciada'+(dryRun?' (Dry Run)':''),'success'); }
+                else { const e=await r.json(); toast('Erro: '+e.error,'error'); }
+            } catch(e) { toast('Erro: '+e.message,'error'); }
+            btn.disabled=false; this.btnState();
+        },
+
+        progress(p, cur) {
+            if(p) {
+                $('sTotal').textContent=p.total;
+                $('sProc').textContent=p.processed;
+                $('sUpd').textContent=p.updated;
+                $('sUnch').textContent=p.unchanged;
+                $('sErr').textContent=p.errors;
+                $('tokensVal').textContent=(p.tokens_used||0).toLocaleString();
+                $('costVal').textContent='$'+(p.estimated_cost||0).toFixed(4);
+                const pct = p.total>0 ? (p.processed/p.total)*100 : 0;
+                $('pbar').style.width=pct+'%';
+                $('ptext').textContent=Math.round(pct)+'%';
+                if(p.processed>0) $('progressArea').classList.add('active');
+                if(p.processed>=p.total && p.total>0) this.refreshUndo();
+            }
+            if(cur) {
+                $('curInfo').innerHTML='<strong>'+cur.index+'/'+cur.total+'</strong> &mdash; <strong>ID:</strong> '+cur.id+'<br><strong>Original:</strong> '+cur.name+'<br><strong>Novo:</strong> '+(cur.improved_name||'processando...');
+                $('curItem').classList.add('show');
+            }
+        },
+
+        btnState() {
+            const b=$('btnStart');
+            if(isRunning) { b.className='btn btn-d btn-w'; b.textContent='Parar'; }
+            else { b.className='btn btn-p btn-w'; b.textContent='Iniciar'; }
+        },
+
+        async refreshUndo() {
+            try {
+                const r = await (await fetch(API+'/api/renamer/undo-info')).json();
+                const d = $('renUndo');
+                if(r.available){ $('renUndoCount').textContent=r.count; d.style.display=''; }
+                else d.style.display='none';
+            } catch(e){}
+        },
+
+        async undo() {
+            if(!confirm('Desfazer todas as '+$('renUndoCount').textContent+' alteracoes de nomes da ultima execucao?')) return;
+            try {
+                const r = await (await fetch(API+'/api/renamer/undo',{method:'POST'})).json();
+                if(r.success){ toast('Revertidos '+r.reverted+' produtos'+(r.errors?' ('+r.errors+' erros)':''),'success'); $('renUndo').style.display='none'; }
+                else toast('Erro: '+r.error,'error');
+            } catch(e){ toast('Erro: '+e.message,'error'); }
+        }
+    };
+
+    // === Simple Explorer ===
+    const SExp = {
+        _json: null,
+        async explore() {
+            const path=$('sPath').value.trim(), max=parseInt($('sMax').value)||5;
+            if(!path){toast('Informe o caminho','warning');return;}
+            $('sResult').textContent='Carregando...';
+            try { const r=await(await fetch(API+'/api/explorer-simple/explore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,max_docs:max})})).json(); this._json=r; $('sResult').textContent=JSON.stringify(r,null,2); }
+            catch(e){$('sResult').textContent='Erro: '+e.message;}
+        },
+        copy() { if(this._json) navigator.clipboard.writeText(JSON.stringify(this._json,null,2)).then(()=>toast('JSON copiado','success')).catch(()=>toast('Erro ao copiar','error')); }
+    };
+
+    // === Advanced Explorer ===
+    const AExp = {
+        _json: null, _to: null,
+        async explore() {
+            const path=$('aPath').value.trim(), max=parseInt($('aMax').value)||10;
+            $('aResult').textContent='Carregando...';
+            try { const r=await(await fetch(API+'/api/explorer/explore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,max_docs:max})})).json(); this._json=r; $('aResult').textContent=JSON.stringify(r,null,2); }
+            catch(e){$('aResult').textContent='Erro: '+e.message;}
+        },
+        onInput() { clearTimeout(this._to); this._to=setTimeout(()=>this.suggest(),400); },
+        async suggest() {
+            const path=$('aPath').value.trim(), list=$('aSugg');
+            if(!path){list.style.display='none';return;}
+            try { const r=await(await fetch(API+'/api/explorer/suggestions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})})).json();
+            if(r.success&&r.suggestions.length){list.innerHTML='';r.suggestions.forEach(s=>{const o=document.createElement('div');o.className='sugg-opt';o.textContent=s;o.onclick=()=>{$('aPath').value=s;list.style.display='none';};list.appendChild(o);});list.style.display='block';}else list.style.display='none';}catch(e){list.style.display='none';}
+        },
+        async cache() { try{const r=await(await fetch(API+'/api/explorer/cache')).json();this._json=r;$('aResult').textContent=JSON.stringify(r,null,2);}catch(e){$('aResult').textContent='Erro: '+e.message;} },
+        copy() { if(this._json) navigator.clipboard.writeText(JSON.stringify(this._json,null,2)).then(()=>toast('JSON copiado','success')).catch(()=>toast('Erro ao copiar','error')); }
+    };
+
+    // === Categorizador ===
+    const Cat = {
+        _running: false,
+        _default: '',
+        _saved: '',
+        _loaded: false,
+
+        async toggle() {
+            if(this._running) { await this.stop(); }
+            else { await this.start(); }
+        },
+
+        async start() {
+            const estId = getEstId('catEstSel','catEstCustom');
+            if(!estId){ toast('Selecione o estabelecimento','warning'); return; }
+            const delay = parseFloat($('catDelay').value)||0.5;
+            const dryRun = $('catDryRun').checked;
+            const prompt = $('catPromptTa').value.trim();
+            const payload = {estabelecimento_id:estId, delay, dry_run:dryRun};
+            if(prompt) payload.custom_prompt = prompt;
+            try {
+                const r = await (await fetch(API+'/api/categorizer/start',{
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify(payload)
+                })).json();
+                if(r.success){ this._running=true; this.btnState(true); $('catProgressCard').style.display=''; $('catLog').innerHTML=''; toast('Categorizacao iniciada','success'); }
+                else { toast(r.error||'Erro ao iniciar','error'); }
+            } catch(e){ toast('Erro: '+e.message,'error'); }
+        },
+
+        async stop() {
+            try {
+                await fetch(API+'/api/categorizer/stop',{method:'POST'});
+                this._running=false; this.btnState(false); toast('Interrompendo...','warning');
+            } catch(e){ toast('Erro: '+e.message,'error'); }
+        },
+
+        async loadPrompt() {
+            try {
+                const r = await (await fetch(API+'/api/categorizer/prompt')).json();
+                if(r.success){ $('catPromptTa').value=r.prompt; this._default=r.default_prompt; this._saved=r.prompt; this._loaded=true; this.checkPromptDirty(); }
+            } catch(e){ $('catPromptTa').value='Erro: '+e.message; }
+        },
+
+        async savePrompt() {
+            const p = $('catPromptTa').value.trim();
+            if(!p){ toast('Prompt vazio','error'); return; }
+            try {
+                const r = await (await fetch(API+'/api/categorizer/prompt',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:p})})).json();
+                if(r.success){ this._saved=p; this.checkPromptDirty(); toast('Prompt salvo no Firestore','success'); }
+                else toast('Erro: '+r.error,'error');
+            } catch(e){ toast('Erro: '+e.message,'error'); }
+        },
+
+        restorePrompt() {
+            if(this._default){ $('catPromptTa').value=this._default; this.checkPromptDirty(); }
+        },
+
+        onPromptChange() { this.checkPromptDirty(); },
+
+        checkPromptDirty() {
+            const dot = $('catPromptDot');
+            if(!dot) return;
+            dot.style.display = (this._loaded && $('catPromptTa').value.trim() !== this._saved) ? 'inline-block' : 'none';
+        },
+
+        togglePrompt() {
+            const bd=$('catPromptBd'), hdr=$('catPromptHdr');
+            const open = bd.style.display!=='none' && bd.style.display!=='';
+            bd.style.display = open ? 'none' : 'block';
+            hdr.querySelector('.arr').style.transform = open ? '' : 'rotate(180deg)';
+        },
+
+        progress(prog, cur) {
+            if(!prog) return;
+            const pct = prog.total>0 ? Math.round(prog.processed/prog.total*100) : 0;
+            $('catProg').style.width = pct+'%';
+            $('catProgLabel').textContent = `${prog.processed} / ${prog.total} (${pct}%)`;
+            $('catTotal').textContent = prog.total||0;
+            $('catProc').textContent = prog.processed||0;
+            $('catUpd').textContent = prog.updated||0;
+            $('catErr').textContent = prog.errors||0;
+            if(prog.estimated_cost!=null) $('catCost').textContent = `Tokens: ${(prog.tokens_used||0).toLocaleString()} | Custo: $${(prog.estimated_cost||0).toFixed(4)}`;
+            if(cur && cur.name){ $('catCurrent').textContent = `[${cur.index}/${cur.total}] ${cur.name}`; }
+            if(prog.total>0) $('catProgressCard').style.display='';
+            if(prog.processed>=prog.total && prog.total>0){ this._running=false; this.btnState(false); this.refreshUndo(); }
+        },
+
+        btnState(running) {
+            this._running = running!=null ? running : this._running;
+            const b=$('catBtn');
+            if(this._running){ b.className='btn btn-d'; b.textContent='Parar'; }
+            else { b.className='btn btn-p'; b.textContent='Iniciar Categorizacao'; }
+        },
+
+        async refreshUndo() {
+            try {
+                const r = await (await fetch(API+'/api/categorizer/undo-info')).json();
+                const d = $('catUndo');
+                if(r.available){ $('catUndoCount').textContent=r.count; d.style.display=''; }
+                else d.style.display='none';
+            } catch(e){}
+        },
+
+        async undo() {
+            if(!confirm('Desfazer todas as '+$('catUndoCount').textContent+' alteracoes de categoria da ultima execucao?')) return;
+            try {
+                const r = await (await fetch(API+'/api/categorizer/undo',{method:'POST'})).json();
+                if(r.success){ toast('Revertidos '+r.reverted+' produtos'+(r.errors?' ('+r.errors+' erros)':''),'success'); $('catUndo').style.display='none'; }
+                else toast('Erro: '+r.error,'error');
+            } catch(e){ toast('Erro: '+e.message,'error'); }
+        }
+    };
+
+    // === Categorizador Dirigido ===
+    const CatDir = {
+        _running: false,
+
+        async loadCategories() {
+            const estId = getEstId('catDirEstSel','catDirEstCustom');
+            if(!estId){ toast('Selecione o estabelecimento','warning'); return; }
+            try {
+                const r = await (await fetch(API+'/api/categorizer/categories?estabelecimento_id='+encodeURIComponent(estId))).json();
+                if(!r.success){ toast(r.error||'Erro','error'); return; }
+                const cats = r.categories;
+                const sel = $('catDirTarget');
+                sel.innerHTML = '<option value="">-- Selecione a categoria alvo --</option>';
+                cats.forEach(c => { const o=document.createElement('option'); o.value=c.id; o.textContent=c.name+' ('+c.id+')'; sel.appendChild(o); });
+                toast(cats.length+' categorias carregadas','success');
+            } catch(e){ toast('Erro: '+e.message,'error'); }
+        },
+
+        async toggle() { this._running ? await this.stop() : await this.start(); },
+
+        async start() {
+            const estId = getEstId('catDirEstSel','catDirEstCustom');
+            const targetCatId = $('catDirTarget').value;
+            if(!estId){ toast('Selecione o estabelecimento','warning'); return; }
+            if(!targetCatId){ toast('Selecione a categoria alvo','warning'); return; }
+            const includeOthers = $('catDirIncludeOthers').checked;
+            const delay = parseFloat($('catDirDelay').value)||0.5;
+            const dryRun = $('catDirDryRun').checked;
+            try {
+                const r = await (await fetch(API+'/api/categorizer-targeted/start',{
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({estabelecimento_id:estId, target_category_id:targetCatId, include_others:includeOthers, delay, dry_run:dryRun})
+                })).json();
+                if(r.success){ this._running=true; this.btnState(true); $('catDirProgressCard').style.display=''; $('catDirLog').innerHTML=''; toast('Modo dirigido iniciado','success'); }
+                else toast(r.error||'Erro ao iniciar','error');
+            } catch(e){ toast('Erro: '+e.message,'error'); }
+        },
+
+        async stop() {
+            try { await fetch(API+'/api/categorizer-targeted/stop',{method:'POST'}); this._running=false; this.btnState(false); toast('Interrompendo...','warning'); }
+            catch(e){ toast('Erro: '+e.message,'error'); }
+        },
+
+        progress(prog, cur) {
+            if(!prog) return;
+            const pct = prog.total>0 ? Math.round(prog.processed/prog.total*100) : 0;
+            $('catDirProg').style.width=pct+'%';
+            $('catDirProgLabel').textContent=prog.processed+' / '+prog.total+' ('+pct+'%)';
+            $('catDirTotal').textContent=prog.total||0;
+            $('catDirProc').textContent=prog.processed||0;
+            $('catDirUpd').textContent=prog.updated||0;
+            $('catDirSkip').textContent=prog.skipped||0;
+            $('catDirErr').textContent=prog.errors||0;
+            if(prog.estimated_cost!=null) $('catDirCost').textContent='Tokens: '+(prog.tokens_used||0).toLocaleString()+' | Custo: $'+(prog.estimated_cost||0).toFixed(4);
+            if(cur&&cur.name) $('catDirCurrent').textContent='['+cur.index+'/'+cur.total+'] '+cur.name;
+            if(prog.total>0) $('catDirProgressCard').style.display='';
+            if(prog.processed>=prog.total&&prog.total>0){ this._running=false; this.btnState(false); this.refreshUndo(); }
+        },
+
+        btnState(running) {
+            this._running = running!=null ? running : this._running;
+            const b=$('catDirBtn');
+            if(this._running){ b.className='btn btn-d'; b.textContent='Parar'; }
+            else { b.className='btn btn-p'; b.textContent='Iniciar Modo Dirigido'; }
+        },
+
+        async refreshUndo() {
+            try {
+                const r = await (await fetch(API+'/api/categorizer-targeted/undo-info')).json();
+                const d = $('catDirUndo');
+                if(r.available){ $('catDirUndoCount').textContent=r.count; d.style.display=''; }
+                else d.style.display='none';
+            } catch(e){}
+        },
+
+        async undo() {
+            if(!confirm('Desfazer todas as '+$('catDirUndoCount').textContent+' alteracoes de categoria da ultima execucao dirigida?')) return;
+            try {
+                const r = await (await fetch(API+'/api/categorizer-targeted/undo',{method:'POST'})).json();
+                if(r.success){ toast('Revertidos '+r.reverted+' produtos'+(r.errors?' ('+r.errors+' erros)':''),'success'); $('catDirUndo').style.display='none'; }
+                else toast('Erro: '+r.error,'error');
+            } catch(e){ toast('Erro: '+e.message,'error'); }
+        }
+    };
+
+    // Close suggestions on click outside
+    document.addEventListener('click', e => { if(!e.target.closest('.field-rel')) $('aSugg').style.display='none'; });
+
+    // === Tour ===
+    const TOUR_KEY = 'pmm_tour_v1';
+
+    const tourSteps = [
+        {
+            target: null,
+            title: 'Bem-vindo ao Automações Mobile Mercado!',
+            text: 'Este painel tem 3 agentes de IA para gerenciar produtos do seu catálogo no Mobile Mercado. Faça um tour rápido para conhecer cada um.',
+            tab: null, subtab: null
+        },
+        {
+            target: '.tabs',
+            title: 'Navegação entre agentes',
+            text: 'Use estas abas para alternar entre os três agentes disponíveis.',
+            tab: 'renamer', subtab: null
+        },
+        {
+            target: '#tab-renamer',
+            title: 'Padronizador de Nomes',
+            text: 'Usa IA para reescrever e padronizar os nomes dos produtos. Carregue as categorias, selecione quais deseja processar e clique em Iniciar.',
+            tab: 'renamer', subtab: null
+        },
+        {
+            target: '#catsubtab-auto',
+            title: 'Categorizador Automático',
+            text: 'Define categoria e subcategoria para cada produto automaticamente — exceto Mercearia, que tem um modo dedicado.',
+            tab: 'categorizer', subtab: 'auto'
+        },
+        {
+            target: '#catsubtab-dirigido',
+            title: 'Modo Dirigido — Mercearia',
+            text: 'Você define a categoria alvo (ex: Mercearia) e a IA escolhe apenas a subcategoria correta para cada produto. Ideal para categorizar Mercearia separadamente.',
+            tab: 'categorizer', subtab: 'dirigido'
+        },
+        {
+            target: '.daily-counter',
+            title: 'Contador Diário de Uso',
+            text: 'Acompanhe aqui o total de tokens e o custo em dólares gastos hoje em todas as chamadas de IA, em tempo real.',
+            tab: null, subtab: null
+        },
+        {
+            target: null,
+            title: 'Tudo pronto! 🎉',
+            text: 'Você já conhece o painel. Sempre que precisar de mais detalhes sobre algum agente, clique no botão ? para ver as instruções de uso.',
+            tab: null, subtab: null, isLast: true
+        }
+    ];
+
+    const Tour = {
+        _step: 0,
+
+        start() {
+            this._step = 0;
+            document.getElementById('tourOverlay').classList.add('active');
+            this._buildDots();
+            this._show();
+        },
+
+        _buildDots() {
+            const dots = document.getElementById('tourDots');
+            dots.innerHTML = '';
+            tourSteps.forEach((_, i) => {
+                const d = document.createElement('div');
+                d.className = 'tour-dot';
+                d.id = 'tourDot' + i;
+                dots.appendChild(d);
+            });
+        },
+
+        _show() {
+            const step = tourSteps[this._step];
+            if (step.tab) switchTab(step.tab);
+            if (step.subtab) {
+                setTimeout(() => {
+                    if (step.tab === 'categorizer') switchCatSub(step.subtab);
+                    setTimeout(() => this._render(step), 80);
+                }, 80);
+            } else {
+                setTimeout(() => this._render(step), step.tab ? 80 : 0);
+            }
+        },
+
+        _render(step) {
+            const total = tourSteps.length;
+            document.getElementById('tourStepLabel').textContent = `Passo ${this._step + 1} de ${total}`;
+            document.getElementById('tourTitle').textContent = step.title;
+            document.getElementById('tourText').textContent = step.text;
+            document.querySelectorAll('.tour-dot').forEach((d, i) => d.classList.toggle('active', i === this._step));
+
+            const prev = document.getElementById('tourPrev');
+            const next = document.getElementById('tourNext');
+            prev.style.visibility = this._step === 0 ? 'hidden' : '';
+            next.textContent = step.isLast ? 'Concluir' : 'Próximo';
+
+            const spotlight = document.getElementById('tourSpotlight');
+            const card = document.getElementById('tourCard');
+            card.style.display = '';
+
+            if (!step.target) {
+                spotlight.style.display = 'none';
+                card.style.top = '50%';
+                card.style.left = '50%';
+                card.style.transform = 'translate(-50%, -50%)';
+                return;
+            }
+
+            const el = document.querySelector(step.target);
+            if (!el) {
+                spotlight.style.display = 'none';
+                card.style.top = '50%';
+                card.style.left = '50%';
+                card.style.transform = 'translate(-50%, -50%)';
+                return;
+            }
+
+            el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+            setTimeout(() => {
+                const rect = el.getBoundingClientRect();
+                const pad = 7;
+                spotlight.style.display = '';
+                spotlight.style.top  = (rect.top  - pad) + 'px';
+                spotlight.style.left = (rect.left - pad) + 'px';
+                spotlight.style.width  = (rect.width  + pad * 2) + 'px';
+                spotlight.style.height = (rect.height + pad * 2) + 'px';
+
+                card.style.transform = '';
+                const cardW = 330;
+                const cardH = card.offsetHeight || 210;
+                const vw = window.innerWidth, vh = window.innerHeight;
+
+                let top = (rect.bottom + pad + 14 + cardH < vh - 16)
+                    ? rect.bottom + pad + 14
+                    : rect.top - pad - 14 - cardH;
+                top = Math.max(12, Math.min(top, vh - cardH - 12));
+
+                let left = rect.left + rect.width / 2 - cardW / 2;
+                left = Math.max(12, Math.min(left, vw - cardW - 12));
+
+                card.style.top  = top  + 'px';
+                card.style.left = left + 'px';
+            }, 60);
+        },
+
+        next() {
+            if (this._step >= tourSteps.length - 1) { this.finish(); return; }
+            this._step++;
+            this._show();
+        },
+
+        prev() {
+            if (this._step <= 0) return;
+            this._step--;
+            this._show();
+        },
+
+        skip()   { this.finish(); },
+        finish() {
+            document.getElementById('tourOverlay').classList.remove('active');
+            document.getElementById('tourCard').style.display = 'none';
+            document.getElementById('tourSpotlight').style.display = 'none';
+            localStorage.setItem(TOUR_KEY, '1');
+        }
+    };
+
+    // === Settings ===
+    const Settings = {
+        initTheme() {
+            // Aplica imediatamente via localStorage para evitar flash, load() sincroniza depois
+            const dark = localStorage.getItem('theme') === 'dark';
+            document.body.classList.toggle('dark', dark);
+            this._updateThemeUI(dark);
+            const cb = $('darkToggle');
+            if (cb) cb.checked = dark;
+        },
+        _updateThemeUI(dark) {
+            const track = $('darkTrack');
+            const thumb = $('darkThumb');
+            const label = $('darkLabel');
+            if (track) track.style.background = dark ? 'var(--accent)' : 'var(--border)';
+            if (thumb) thumb.style.left = dark ? '23px' : '3px';
+            if (label) label.textContent = dark ? 'Tema escuro' : 'Tema claro';
+        },
+        toggleTheme() {
+            const dark = document.body.classList.toggle('dark');
+            localStorage.setItem('theme', dark ? 'dark' : 'light');
+            this._updateThemeUI(dark);
+            fetch(API+'/api/settings/theme', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({tema: dark})
+            }).catch(()=>{});
+        },
+        async load() {
+            try {
+                const r = await fetch(API+'/api/settings');
+                const d = await r.json();
+                // Credenciais
+                const u = $('settUser');
+                if (u) u.placeholder = d.username || '';
+                const prev = $('settKeyPreview');
+                if (prev) prev.textContent = d.api_key_set ? d.api_key_preview : 'nao configurada';
+                // Tema — sincroniza com Firestore e atualiza localStorage
+                const serverDark = d.tema === true;
+                const localDark = localStorage.getItem('theme') === 'dark';
+                if (serverDark !== localDark) {
+                    document.body.classList.toggle('dark', serverDark);
+                    this._updateThemeUI(serverDark);
+                    const cb = $('darkToggle');
+                    if (cb) cb.checked = serverDark;
+                    localStorage.setItem('theme', serverDark ? 'dark' : 'light');
+                }
+            } catch(e) {}
+        },
+        toggleKeyVisibility() {
+            const inp = $('settApiKey');
+            const btn = $('settEyeBtn');
+            if (!inp) return;
+            const show = inp.type === 'password';
+            inp.type = show ? 'text' : 'password';
+            if (btn) btn.innerHTML = show ? '&#128065;&#65038;' : '&#128065;';
+        },
+        async saveCredentials() {
+            const user = ($('settUser').value || '').trim();
+            const pass = ($('settPass').value || '').trim();
+            const confirm = ($('settPassConfirm').value || '').trim();
+            if (!user || !pass) { toast('Preencha usuario e senha', 'warning'); return; }
+            if (pass !== confirm) { toast('As senhas nao coincidem', 'error'); return; }
+            try {
+                const r = await fetch(API+'/api/settings/credentials', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({username:user, password:pass})
+                });
+                const d = await r.json();
+                if (d.success) {
+                    toast('Credenciais salvas. Faca login novamente.', 'success');
+                    $('settPass').value = '';
+                    $('settPassConfirm').value = '';
+                    setTimeout(() => window.location.href = '/logout', 1800);
+                } else {
+                    toast(d.error || 'Erro ao salvar', 'error');
+                }
+            } catch(e) { toast('Erro de conexao', 'error'); }
+        },
+        async saveApiKey() {
+            const key = ($('settApiKey').value || '').trim();
+            if (!key) { toast('Informe a chave', 'warning'); return; }
+            try {
+                const r = await fetch(API+'/api/settings/openai-key', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({api_key:key})
+                });
+                const d = await r.json();
+                if (d.success) {
+                    toast('Chave OpenAI atualizada', 'success');
+                    $('settApiKey').value = '';
+                    this.load();
+                } else {
+                    toast(d.error || 'Erro ao salvar chave', 'error');
+                }
+            } catch(e) { toast('Erro de conexao', 'error'); }
+        },
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+        Settings.initTheme();
+        initWS();
+        fetch(API+'/api/stats/daily').then(r=>r.json()).then(d=>{ if(d.today) updateDailyStats(d.today); }).catch(()=>{});
+        Renamer.loadPrompt();
+        Cat.loadPrompt();
+        Settings.load();
+        if (!localStorage.getItem(TOUR_KEY)) Tour.start();
+    });
+    </script>
+</body>
+</html>

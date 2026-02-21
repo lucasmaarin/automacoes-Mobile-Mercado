@@ -1,0 +1,102 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribuição / pacotes
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+.ENV/
+pip-wheel-metadata/
+*.virtualenv
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Test / coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# Poetry
+poetry.lock
+
+# Editor / IDEs
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Logs
+*.log
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+.env
+
+# Credenciais Firebase (nunca commitar)
+*-firebase-adminsdk-*.json
+*-firebase-admin*.json
+firebase-credentials*.json
+serviceAccount*.json
+service-account*.json
+appmobileprod-*.json
+
+# Arquivos JSON de dados / runtime
+product.json
+sub.json
+users.json
+cat.json
+zerograu.json
+zerograu_user.json
+
+# Scripts auxiliares / testes locais
+firestore_for_json.py
+firestore_simple.py
+nome_cat.py
+nome_cats.py
+anotacoes.txt
+
