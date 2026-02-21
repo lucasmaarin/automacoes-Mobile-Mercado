@@ -1718,7 +1718,7 @@ def init_all():
 
 def get_admin_credentials():
     """Busca credenciais de admin no Firestore (Automacoes/admin > userAdmin / passAdmin).
-    Usa fallback para variáveis de ambiente se o Firestore estiver indisponível."""
+    Retorna (None, None) se o Firestore estiver indisponível ou o documento não existir."""
     try:
         if db:
             doc = db.collection('Automacoes').document('admin').get()
@@ -1729,8 +1729,8 @@ def get_admin_credentials():
                 if user and passwd:
                     return user, passwd
     except Exception as e:
-        logger.warning(f"Credenciais Firestore indisponíveis, usando .env: {e}")
-    return os.getenv('ADMIN_USERNAME', 'admin'), os.getenv('ADMIN_PASSWORD', 'admin123')
+        logger.warning(f"Erro ao buscar credenciais do Firestore: {e}")
+    return None, None
 
 PUBLIC_ROUTES = {'login', 'static'}
 
@@ -1748,10 +1748,13 @@ def login():
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '').strip()
         admin_user, admin_pass = get_admin_credentials()
-        if username == admin_user and password == admin_pass:
+        if admin_user is None:
+            error = 'Serviço indisponível. Tente novamente em instantes.'
+        elif username == admin_user and password == admin_pass:
             session['logged_in'] = True
             return redirect(url_for('index'))
-        error = 'Usuário ou senha incorretos.'
+        else:
+            error = 'Usuário ou senha incorretos.'
     return render_template('login.html', error=error)
 
 @app.route('/logout')
