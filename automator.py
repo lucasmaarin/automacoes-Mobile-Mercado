@@ -350,10 +350,26 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
             automation_state['running'] = False
             automation_state['current_product'] = None
             self.update_progress()
+            try:
+                socketio.emit('renamer_status_update', {
+                    'running': False,
+                    'progress': automation_state['progress'],
+                    'current_product': None,
+                })
+            except Exception:
+                pass
             return True
         except Exception as e:
             self.log_message(f"Erro: {e}", "error")
             automation_state['running'] = False
             automation_state['current_product'] = None
             self.update_progress()
+            try:
+                socketio.emit('renamer_status_update', {
+                    'running': False,
+                    'progress': automation_state['progress'],
+                    'current_product': None,
+                })
+            except Exception:
+                pass
             return False

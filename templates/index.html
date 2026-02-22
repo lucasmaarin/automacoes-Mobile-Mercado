@@ -1265,7 +1265,7 @@
             if(prompt) payload.custom_prompt = prompt;
             try {
                 const r = await fetch(API+'/api/renamer/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-                if(r.ok) { $('progressArea').classList.add('active'); $('renamerLog').innerHTML=''; toast('Automacao iniciada'+(dryRun?' (Dry Run)':''),'success'); }
+                if(r.ok) { isRunning=true; $('progressArea').classList.add('active'); $('renamerLog').innerHTML=''; toast('Automacao iniciada'+(dryRun?' (Dry Run)':''),'success'); }
                 else { const e=await r.json(); toast('Erro: '+e.error,'error'); }
             } catch(e) { toast('Erro: '+e.message,'error'); }
             btn.disabled=false; this.btnState();

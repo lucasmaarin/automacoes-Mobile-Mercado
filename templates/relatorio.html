@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relatório de Categorização</title>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --border: #2a2d3a;
+    --text: #e2e8f0; --muted: #64748b; --accent: #6366f1;
+    --green: #22c55e; --red: #ef4444; --orange: #f59e0b;
+    --blue: #3b82f6; --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: .9rem; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .header h1 { font-size: 1.1rem; font-weight: 600; }
+  .header .sub { color: var(--muted); font-size: .82rem; }
+
+  .top-bar { padding: 16px 24px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .est-select { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: var(--radius); font-size: .85rem; }
+  .btn { padding: 6px 14px; border-radius: var(--radius); border: none; cursor: pointer; font-size: .85rem; font-weight: 500; transition: opacity .15s; }
+  .btn:hover { opacity: .85; }
+  .btn-p { background: var(--accent); color: #fff; }
+  .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .btn-sm { padding: 4px 10px; font-size: .78rem; }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; padding: 16px 24px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .stat-card .val { font-size: 1.6rem; font-weight: 700; line-height: 1; }
+  .stat-card .lbl { color: var(--muted); font-size: .78rem; margin-top: 4px; }
+  .green { color: var(--green); }
+  .red { color: var(--red); }
+  .orange { color: var(--orange); }
+  .blue { color: var(--blue); }
+
+  .filters { padding: 0 24px 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .filter-btn { padding: 6px 16px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; font-size: .82rem; transition: all .15s; }
+  .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .filter-btn:hover:not(.active) { border-color: var(--text); color: var(--text); }
+
+  .search-bar { padding: 0 24px 12px; }
+  .search-bar input { width: 100%; max-width: 400px; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 7px 12px; border-radius: var(--radius); font-size: .85rem; outline: none; }
+  .search-bar input:focus { border-color: var(--accent); }
+
+  .table-wrap { padding: 0 24px 8px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+  thead th { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 12px; text-align: left; color: var(--muted); font-weight: 500; white-space: nowrap; position: sticky; top: 0; }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+  tbody tr:hover { background: var(--surface); }
+  tbody td { padding: 9px 12px; vertical-align: middle; }
+  .id-cell { font-family: monospace; font-size: .75rem; color: var(--muted); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+  .id-cell:hover { color: var(--accent); }
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 10px; font-size: .75rem; font-weight: 500; white-space: nowrap; }
+  .badge-green { background: #16a34a22; color: var(--green); border: 1px solid #16a34a44; }
+  .badge-red { background: #dc262622; color: var(--red); border: 1px solid #dc262644; }
+  .badge-orange { background: #d9770622; color: var(--orange); border: 1px solid #d9770644; }
+  .cat-text { color: var(--text); }
+  .sub-text { color: var(--muted); font-size: .78rem; }
+
+  .pagination { padding: 12px 24px 24px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .pagination .info { color: var(--muted); font-size: .82rem; margin-right: 8px; }
+  .page-btn { width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; font-size: .82rem; display: flex; align-items: center; justify-content: center; transition: all .15s; }
+  .page-btn:hover:not(:disabled) { background: var(--surface); border-color: var(--accent); }
+  .page-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .page-btn:disabled { opacity: .3; cursor: default; }
+
+  .error-section { padding: 0 24px 24px; }
+  .error-section h2 { font-size: .95rem; font-weight: 600; margin-bottom: 10px; color: var(--red); }
+  .error-card { background: var(--surface); border: 1px solid #dc262644; border-left: 3px solid var(--red); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 8px; }
+  .error-card .err-time { color: var(--muted); font-size: .75rem; }
+  .error-card .err-msg { margin-top: 3px; font-size: .83rem; word-break: break-word; }
+  .error-card .err-id { font-family: monospace; font-size: .75rem; color: var(--orange); margin-top: 2px; }
+
+  .empty { text-align: center; padding: 40px 0; color: var(--muted); }
+  .loading { text-align: center; padding: 40px 0; color: var(--muted); }
+  .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .notice { background: #6366f122; border: 1px solid #6366f144; border-radius: var(--radius); padding: 8px 14px; font-size: .82rem; color: var(--accent); margin: 0 24px 12px; }
+
+  @media (max-width: 600px) {
+    .header, .top-bar, .stats, .filters, .search-bar, .table-wrap, .pagination, .error-section { padding-left: 12px; padding-right: 12px; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>Relatório de Categorização & Nomeação</h1>
+    <div class="sub" id="headerSub">Carregando dados...</div>
+  </div>
+  <a href="/" class="btn btn-ghost btn-sm">← Voltar</a>
+</div>
+
+<div class="top-bar">
+  <div style="display: flex; gap: 8px; align-items: center; flex: 1;">
+    <select class="est-select" id="estSel" onchange="load()">
+      <option value="estabelecimento-teste">Estabelecimento Teste</option>
+      <option value="jQQjHTCc2zW1tuZMQzGF">Zero Grau</option>
+    </select>
+    <button class="btn btn-p btn-sm" onclick="load()">Atualizar</button>
+  </div>
+  <div style="display: flex; gap: 6px;">
+    <button class="filter-btn active" data-tab="categorizer" onclick="switchReport('categorizer', this)">Categorização</button>
+    <button class="filter-btn" data-tab="renamer" onclick="switchReport('renamer', this)">Nomeação</button>
+  </div>
+</div>
+
+<div class="stats" id="statsRow">
+  <div class="stat-card"><div class="val blue" id="sTotal">—</div><div class="lbl" id="sTotalLbl">Total de Produtos</div></div>
+  <div class="stat-card"><div class="val green" id="sWith">—</div><div class="lbl" id="sWithLbl">Com Categoria</div></div>
+  <div class="stat-card"><div class="val red" id="sWithout">—</div><div class="lbl" id="sWithoutLbl">Sem Categoria</div></div>
+  <div class="stat-card"><div class="val orange" id="sErrors">—</div><div class="lbl" id="sErrorsLbl">Erros (última execução)</div></div>
+</div>
+
+<div id="noticeBox" style="display:none" class="notice">
+  Os erros exibidos são da última execução nesta sessão do servidor. Reiniciar o servidor limpa esse histórico.
+</div>
+
+<div class="filters" id="filterRow">
+  <button class="filter-btn active" data-f="all" onclick="setFilter(this,'all')">Todos</button>
+  <button class="filter-btn" data-f="with" onclick="setFilter(this,'with')">Com categoria</button>
+  <button class="filter-btn" data-f="without" onclick="setFilter(this,'without')">Sem categoria</button>
+  <button class="filter-btn" data-f="errors" onclick="setFilter(this,'errors')">Erros da execução</button>
+</div>
+
+<div class="search-bar">
+  <input type="text" id="searchInput" placeholder="Buscar por nome ou ID..." oninput="onSearch()">
+</div>
+
+<!-- Seção de erros da execução -->
+<div class="error-section" id="errorSection" style="display:none">
+  <h2>Erros da Última Execução</h2>
+  <div id="errorList"></div>
+</div>
+
+<!-- Tabela de produtos -->
+<div class="table-wrap" id="tableWrap">
+  <div class="loading"><span class="spinner"></span>Carregando produtos...</div>
+</div>
+
+<div class="pagination" id="paginationWrap"></div>
+
+<script>
+  const PAGE_SIZE = 50;
+  let allProducts = [], errorLogs = [], filtered = [], currentFilter = 'all', currentPage = 1;
+  let currentReport = 'categorizer'; // 'categorizer' ou 'renamer'
+  let renamedProducts = [], renamedErrors = [];
+
+  async function load() {
+    if (currentReport === 'categorizer') loadCategorizerReport();
+    else loadRenamerReport();
+  }
+
+  function switchReport(reportType, btn) {
+    // Atualizar botão ativo
+    document.querySelectorAll('.top-bar .filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    
+    currentReport = reportType;
+    currentPage = 1;
+    currentFilter = 'all';
+    
+    // Resetar filtros
+    document.querySelectorAll('.filters .filter-btn').forEach(b => {
+      if (b.dataset.f === 'all') b.classList.add('active');
+      else b.classList.remove('active');
+    });
+    document.getElementById('searchInput').value = '';
+
+    // Carregar dados apropriados
+    if (reportType === 'categorizer') {
+      loadCategorizerReport();
+    } else {
+      loadRenamerReport();
+    }
+  }
+
+  async function loadCategorizerReport() {
+    const estId = document.getElementById('estSel').value;
+    document.getElementById('tableWrap').innerHTML = '<div class="loading"><span class="spinner"></span>Carregando produtos...</div>';
+    document.getElementById('paginationWrap').innerHTML = '';
+    document.getElementById('headerSub').textContent = 'Carregando dados...';
+    document.getElementById('errorSection').style.display = 'none';
+
+    try {
+      const r = await fetch('/api/report/categorizer?estabelecimento_id=' + encodeURIComponent(estId));
+      const d = await r.json();
+      if (!d.success) { showError(d.error || 'Erro ao carregar'); return; }
+
+      allProducts = d.produtos || [];
+      errorLogs = d.error_logs || [];
+
+      document.getElementById('sTotal').textContent = d.total.toLocaleString();
+      document.getElementById('sWith').textContent = d.with_category.toLocaleString();
+      document.getElementById('sWithout').textContent = d.without_category.toLocaleString();
+      document.getElementById('sErrors').textContent = errorLogs.length.toLocaleString();
+      document.getElementById('headerSub').textContent =
+        `${d.total} produtos · ${d.with_category} categorizados · ${d.without_category} sem categoria`;
+
+      // Atualizar labels
+      document.getElementById('sTotalLbl').textContent = 'Total de Produtos';
+      document.getElementById('sWithLbl').textContent = 'Com Categoria';
+      document.getElementById('sWithoutLbl').textContent = 'Sem Categoria';
+      document.getElementById('sErrorsLbl').textContent = 'Erros (última execução)';
+
+      // Atualizar filtros para categorização
+      updateFilterButtons('categorizer');
+
+      if (errorLogs.length > 0) {
+        document.getElementById('noticeBox').style.display = '';
+      }
+
+      currentPage = 1;
+      applyFilter();
+    } catch(e) {
+      showError('Erro de conexão: ' + e.message);
+    }
+  }
+
+  async function loadRenamerReport() {
+    const estId = document.getElementById('estSel').value;
+    document.getElementById('tableWrap').innerHTML = '<div class="loading"><span class="spinner"></span>Carregando dados de nomeação...</div>';
+    document.getElementById('paginationWrap').innerHTML = '';
+    document.getElementById('headerSub').textContent = 'Carregando dados...';
+    document.getElementById('errorSection').style.display = 'none';
+
+    try {
+      const r = await fetch('/api/report/renamer?estabelecimento_id=' + encodeURIComponent(estId));
+      const d = await r.json();
+      if (!d.success) { showError(d.error || 'Erro ao carregar relatório de nomeação'); return; }
+
+      renamedProducts = d.produtos || [];
+      renamedErrors = d.errors || [];
+
+      const totalRenamed = d.renamed_count || 0;
+      const totalProducts = d.total_products || 0;
+      const errorCount = renamedErrors.length || 0;
+
+      document.getElementById('sTotal').textContent = totalProducts.toLocaleString();
+      document.getElementById('sWith').textContent = totalRenamed.toLocaleString();
+      document.getElementById('sWithout').textContent = (totalProducts - totalRenamed).toLocaleString();
+      document.getElementById('sErrors').textContent = errorCount.toLocaleString();
+      document.getElementById('headerSub').textContent =
+        `${totalProducts} produtos · ${totalRenamed} renomeados · ${totalProducts - totalRenamed} não renomeados`;
+
+      // Atualizar labels
+      document.getElementById('sTotalLbl').textContent = 'Total de Produtos';
+      document.getElementById('sWithLbl').textContent = 'Renomeados';
+      document.getElementById('sWithoutLbl').textContent = 'Não Renomeados';
+      document.getElementById('sErrorsLbl').textContent = 'Erros (última execução)';
+
+      // Atualizar filtros para nomeação
+      updateFilterButtons('renamer');
+
+      if (errorCount > 0) {
+        document.getElementById('noticeBox').style.display = '';
+      }
+
+      currentPage = 1;
+      applyFilter();
+    } catch(e) {
+      showError('Erro de conexão: ' + e.message);
+    }
+  }
+
+  function updateFilterButtons(reportType) {
+    const filterRow = document.getElementById('filterRow');
+    if (reportType === 'categorizer') {
+      filterRow.innerHTML = `
+        <button class="filter-btn active" data-f="all" onclick="setFilter(this,'all')">Todos</button>
+        <button class="filter-btn" data-f="with" onclick="setFilter(this,'with')">Com categoria</button>
+        <button class="filter-btn" data-f="without" onclick="setFilter(this,'without')">Sem categoria</button>
+        <button class="filter-btn" data-f="errors" onclick="setFilter(this,'errors')">Erros da execução</button>
+      `;
+    } else {
+      filterRow.innerHTML = `
+        <button class="filter-btn active" data-f="all" onclick="setFilter(this,'all')">Todos</button>
+        <button class="filter-btn" data-f="renamed" onclick="setFilter(this,'renamed')">Renomeados</button>
+        <button class="filter-btn" data-f="not-renamed" onclick="setFilter(this,'not-renamed')">Não renomeados</button>
+        <button class="filter-btn" data-f="errors" onclick="setFilter(this,'errors')">Erros da execução</button>
+      `;
+    }
+  }
+
+  function setFilter(btn, f) {
+    document.querySelectorAll('.filters .filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFilter = f;
+    currentPage = 1;
+    applyFilter();
+  }
+
+  function onSearch() { currentPage = 1; applyFilter(); }
+
+  function applyFilter() {
+    const q = document.getElementById('searchInput').value.toLowerCase().trim();
+
+    if (currentReport === 'categorizer') {
+      applyCategorizerFilter(q);
+    } else {
+      applyRenamerFilter(q);
+    }
+  }
+
+  function applyCategorizerFilter(q) {
+    if (currentFilter === 'errors') {
+      document.getElementById('errorSection').style.display = '';
+      document.getElementById('tableWrap').innerHTML = '';
+      document.getElementById('paginationWrap').innerHTML = '';
+      renderErrors(q);
+      return;
+    }
+    document.getElementById('errorSection').style.display = 'none';
+
+    filtered = allProducts.filter(p => {
+      const matchFilter =
+        currentFilter === 'all' ||
+        (currentFilter === 'with' && p.has_category) ||
+        (currentFilter === 'without' && !p.has_category);
+      if (!matchFilter) return false;
+      if (!q) return true;
+      return p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q);
+    });
+
+    renderCategorizerTable();
+    renderPagination();
+  }
+
+  function applyRenamerFilter(q) {
+    if (currentFilter === 'errors') {
+      document.getElementById('errorSection').style.display = '';
+      document.getElementById('tableWrap').innerHTML = '';
+      document.getElementById('paginationWrap').innerHTML = '';
+      renderRenamerErrors(q);
+      return;
+    }
+    document.getElementById('errorSection').style.display = 'none';
+
+    filtered = renamedProducts.filter(p => {
+      const matchFilter =
+        currentFilter === 'all' ||
+        (currentFilter === 'renamed' && p.renamed) ||
+        (currentFilter === 'not-renamed' && !p.renamed);
+      if (!matchFilter) return false;
+      if (!q) return true;
+      return (p.old_name || '').toLowerCase().includes(q) || 
+             (p.new_name || '').toLowerCase().includes(q) || 
+             (p.id || '').toLowerCase().includes(q);
+    });
+
+    renderRenamerTable();
+    renderPagination();
+  }
+
+  function renderErrors(q) {
+    const list = document.getElementById('errorList');
+    let logs = errorLogs;
+    if (q) logs = logs.filter(l => l.message.toLowerCase().includes(q));
+    if (logs.length === 0) {
+      list.innerHTML = '<div class="empty">Nenhum erro registrado' + (q ? ' para a busca' : ' na última execução') + '.</div>';
+      return;
+    }
+    list.innerHTML = logs.map(log => {
+      const nameMatch = log.message.match(/para '([^']+)'/);
+      const idMatch = log.message.match(/categorizar\s+([A-Za-z0-9_-]{15,})/);
+      const productName = nameMatch ? nameMatch[1] : '';
+      const productId = idMatch ? idMatch[1] : '';
+      return `<div class="error-card">
+        <div class="err-time">${log.timestamp || ''}</div>
+        <div class="err-msg">${escHtml(log.message)}</div>
+        ${productName ? `<div class="err-id">Produto: ${escHtml(productName)}</div>` : ''}
+        ${productId ? `<div class="err-id">ID: ${escHtml(productId)}</div>` : ''}
+      </div>`;
+    }).join('');
+  }
+
+  function renderRenamerErrors(q) {
+    const list = document.getElementById('errorList');
+    let logs = renamedErrors;
+    if (q) logs = logs.filter(l => l.message.toLowerCase().includes(q));
+    if (logs.length === 0) {
+      list.innerHTML = '<div class="empty">Nenhum erro registrado' + (q ? ' para a busca' : ' na última execução') + '.</div>';
+      return;
+    }
+    list.innerHTML = logs.map(log => {
+      return `<div class="error-card">
+        <div class="err-time">${log.timestamp || ''}</div>
+        <div class="err-msg">${escHtml(log.message || log.detail || '')}</div>
+        ${log.product_id ? `<div class="err-id">Produto ID: ${escHtml(log.product_id)}</div>` : ''}
+      </div>`;
+    }).join('');
+  }
+
+  function renderCategorizerTable() {
+    const wrap = document.getElementById('tableWrap');
+    if (filtered.length === 0) {
+      wrap.innerHTML = '<div class="empty">Nenhum produto encontrado.</div>';
+      return;
+    }
+    const start = (currentPage - 1) * PAGE_SIZE;
+    const page = filtered.slice(start, start + PAGE_SIZE);
+
+    wrap.innerHTML = `<table>
+      <thead><tr>
+        <th>#</th>
+        <th>Nome do Produto</th>
+        <th>ID</th>
+        <th>Status</th>
+        <th>Categoria</th>
+        <th>Subcategoria</th>
+      </tr></thead>
+      <tbody>${page.map((p, i) => `
+        <tr>
+          <td style="color:var(--muted);width:40px">${start + i + 1}</td>
+          <td>${escHtml(p.name)}</td>
+          <td><span class="id-cell" title="${p.id}" onclick="copyId('${p.id}')">${p.id}</span></td>
+          <td>${p.has_category
+            ? '<span class="badge badge-green">✓ Categorizado</span>'
+            : '<span class="badge badge-red">✗ Sem categoria</span>'
+          }</td>
+          <td><span class="cat-text">${escHtml(p.category_name || '—')}</span></td>
+          <td><span class="sub-text">${escHtml(p.subcategory_name || '—')}</span></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+  }
+
+  function renderRenamerTable() {
+    const wrap = document.getElementById('tableWrap');
+    if (filtered.length === 0) {
+      wrap.innerHTML = '<div class="empty">Nenhum produto encontrado.</div>';
+      return;
+    }
+    const start = (currentPage - 1) * PAGE_SIZE;
+    const page = filtered.slice(start, start + PAGE_SIZE);
+
+    wrap.innerHTML = `<table>
+      <thead><tr>
+        <th>#</th>
+        <th>Nome Original</th>
+        <th>Novo Nome</th>
+        <th>ID</th>
+        <th>Status</th>
+      </tr></thead>
+      <tbody>${page.map((p, i) => `
+        <tr>
+          <td style="color:var(--muted);width:40px">${start + i + 1}</td>
+          <td>${escHtml(p.old_name || '—')}</td>
+          <td>${escHtml(p.new_name || '—')}</td>
+          <td><span class="id-cell" title="${p.id}" onclick="copyId('${p.id}')">${p.id}</span></td>
+          <td>${p.renamed
+            ? '<span class="badge badge-green">✓ Renomeado</span>'
+            : '<span class="badge badge-orange">○ Não renomeado</span>'
+          }</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+  }
+
+  function renderPagination() {
+    const wrap = document.getElementById('paginationWrap');
+    const total = filtered.length;
+    const pages = Math.ceil(total / PAGE_SIZE);
+    if (pages <= 1) { wrap.innerHTML = `<span class="info">Mostrando ${total} produto${total !== 1 ? 's' : ''}</span>`; return; }
+
+    const start = (currentPage - 1) * PAGE_SIZE + 1;
+    const end = Math.min(currentPage * PAGE_SIZE, total);
+    let html = `<span class="info">Mostrando ${start}–${end} de ${total}</span>`;
+    html += `<button class="page-btn" onclick="goPage(${currentPage-1})" ${currentPage===1?'disabled':''}>‹</button>`;
+
+    let pStart = Math.max(1, currentPage - 3);
+    let pEnd = Math.min(pages, pStart + 6);
+    if (pEnd - pStart < 6) pStart = Math.max(1, pEnd - 6);
+    if (pStart > 1) html += `<button class="page-btn" onclick="goPage(1)">1</button>${pStart > 2 ? '<span style="color:var(--muted);padding:0 4px">…</span>' : ''}`;
+    for (let p = pStart; p <= pEnd; p++) {
+      html += `<button class="page-btn${p===currentPage?' active':''}" onclick="goPage(${p})">${p}</button>`;
+    }
+    if (pEnd < pages) html += `${pEnd < pages-1 ? '<span style="color:var(--muted);padding:0 4px">…</span>' : ''}<button class="page-btn" onclick="goPage(${pages})">${pages}</button>`;
+    html += `<button class="page-btn" onclick="goPage(${currentPage+1})" ${currentPage===pages?'disabled':''}>›</button>`;
+    wrap.innerHTML = html;
+  }
+
+  function goPage(p) {
+    const pages = Math.ceil(filtered.length / PAGE_SIZE);
+    if (p < 1 || p > pages) return;
+    currentPage = p;
+    if (currentReport === 'categorizer') renderCategorizerTable();
+    else renderRenamerTable();
+    renderPagination();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function showError(msg) {
+    document.getElementById('tableWrap').innerHTML = `<div class="empty" style="color:var(--red)">${escHtml(msg)}</div>`;
+  }
+
+  function escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function copyId(id) {
+    navigator.clipboard.writeText(id).then(() => {
+      const el = [...document.querySelectorAll('.id-cell')].find(e => e.title === id);
+      if (el) { const orig = el.textContent; el.textContent = 'copiado!'; setTimeout(() => el.textContent = orig, 1200); }
+    });
+  }
+
+  load();
+</script>
+</body>
+</html>

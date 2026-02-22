@@ -1152,6 +1152,116 @@ def index():
     return render_template("index.html")
 
 
+@app.route('/relatorio')
+def relatorio():
+    return render_template("relatorio.html")
+
+
+@app.route('/api/report/categorizer', methods=['GET'])
+def categorizer_report():
+    est_id = request.args.get('estabelecimento_id', 'estabelecimento-teste')
+    if not db:
+        return jsonify({'error': 'Firebase nao inicializado'}), 500
+    try:
+        col_ref = (db.collection('estabelecimentos')
+                   .document(est_id)
+                   .collection('Products'))
+        products = []
+        for doc in col_ref.stream():
+            data = doc.to_dict()
+            if not data or not data.get('name'):
+                continue
+            cats = data.get('categoriesIds') or []
+            shelves = data.get('shelves') or []
+            cat_name = shelves[0].get('categoryName', '') if shelves else ''
+            sub_name = shelves[0].get('subcategoryName', '') if shelves else ''
+            products.append({
+                'id': doc.id,
+                'name': data.get('name', ''),
+                'has_category': bool(cats),
+                'category_name': cat_name,
+                'subcategory_name': sub_name,
+            })
+        error_logs = [
+            log for log in categorizer_state.get('logs', [])
+            if log.get('level') == 'error'
+        ]
+        products.sort(key=lambda p: (p['has_category'], p['name'].lower()))
+        return jsonify({
+            'success': True,
+            'produtos': products,
+            'total': len(products),
+            'with_category': sum(1 for p in products if p['has_category']),
+            'without_category': sum(1 for p in products if not p['has_category']),
+            'error_logs': error_logs,
+            'estabelecimento_id': est_id,
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/report/renamer', methods=['GET'])
+def renamer_report():
+    """Relatório de produtos renomeados (últimas mudanças do undo_store)"""
+    est_id = request.args.get('estabelecimento_id', 'estabelecimento-teste')
+    if not db:
+        return jsonify({'success': False, 'error': 'Firebase nao inicializado'}), 500
+    try:
+        # Buscar todos os produtos
+        col_ref = (db.collection('estabelecimentos')
+                   .document(est_id)
+                   .collection('Products'))
+        all_products = []
+        products_by_id = {}
+        for doc in col_ref.stream():
+            data = doc.to_dict()
+            if not data or not data.get('name'):
+                continue
+            all_products.append({
+                'id': doc.id,
+                'name': data.get('name', ''),
+            })
+            products_by_id[doc.id] = data.get('name', '')
+        
+        # Extrair histórico de mudanças do undo_store (últimas renomeações)
+        with _undo_lock:
+            changes = [c for c in undo_store['renamer'] if c.get('estabelecimento_id') == est_id]
+        
+        # Construir lista de produtos renomeados com before/after
+        renamed_products = []
+        for change in changes:
+            product_id = change.get('product_id', '')
+            old_name = change.get('old_name', '')
+            new_name = change.get('new_name', '')
+            renamed_products.append({
+                'id': product_id,
+                'old_name': old_name,
+                'new_name': new_name,
+                'renamed': bool(old_name and new_name and old_name != new_name),
+                'timestamp': change.get('timestamp', ''),
+            })
+        
+        # Erros armazenados no automation_state
+        errors_list = automation_state.get('renamer_errors', [])
+        
+        # Estatísticas
+        total_products = len(all_products)
+        renamed_count = len(renamed_products)
+        
+        return jsonify({
+            'success': True,
+            'produtos': renamed_products,
+            'total_products': total_products,
+            'renamed_count': renamed_count,
+            'errors': errors_list,
+            'estabelecimento_id': est_id,
+        })
+    except Exception as e:
+        logger.error(f'Erro em /api/report/renamer: {e}', exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+
 # ============================================================
 # Rotas: Renamer
 # ============================================================
@@ -1230,6 +1340,14 @@ def stop_automation():
     if not automation_state['running']:
         return jsonify({'error': 'Nenhuma automacao em execucao'}), 400
     automation_state['running'] = False
+    try:
+        socketio.emit('renamer_status_update', {
+            'running': False,
+            'progress': automation_state['progress'],
+            'current_product': automation_state['current_product'],
+        })
+    except Exception:
+        pass
     return jsonify({'success': True, 'message': 'Automacao interrompida'})
 
 
