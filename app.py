@@ -495,46 +495,33 @@ class ProductCategorizerAgent:
         return valid_items[0]['id'] if valid_items else None
 
     def get_category_and_subcategory(self, product_name, categories, subcategories):
-        # Step 1: determine category
-        cats_text = "\n".join([f"id={c['id']} | nome={c['name']}" for c in categories])
-        cat_prompt = (
+        # Uma única chamada retorna categoria e subcategoria no formato "cat_id|sub_id"
+        cats_text = "\n".join(f"{c['id']}|{c['name']}" for c in categories)
+        subs_text = "\n".join(f"{s['id']}|{s['categoryId']}|{s['name']}" for s in subcategories)
+        prompt = (
             f"Produto: \"{product_name}\"\n\n"
-            f"Categorias disponiveis:\n{cats_text}\n\n"
-            f"Qual e o id da categoria mais adequada para este produto? "
-            f"Responda APENAS com o id exato da categoria."
+            f"CATEGORIAS (id|nome):\n{cats_text}\n\n"
+            f"SUBCATEGORIAS (id|categoria_id|nome):\n{subs_text}\n\n"
+            f"Responda APENAS no formato exato: categoria_id|subcategoria_id\n"
+            f"Escolha a categoria e subcategoria mais adequadas para o produto."
         )
         try:
-            raw_cat = self._call_openai(cat_prompt, max_tokens=60)
-            category_id = self._best_match(raw_cat, categories)
+            raw = self._call_openai(prompt, max_tokens=80)
+            parts = raw.strip().split('|')
+            cat_raw = parts[0].strip() if len(parts) >= 1 else ''
+            sub_raw = parts[1].strip() if len(parts) >= 2 else ''
+            category_id = self._best_match(cat_raw, categories) if cat_raw else None
             if not category_id:
                 self.log_message(f"Nao foi possivel determinar categoria para '{product_name}'", "warning")
                 return None, None
+            relevant_subs = [s for s in subcategories if s['categoryId'] == category_id]
+            if not relevant_subs:
+                return category_id, None
+            subcategory_id = self._best_match(sub_raw, relevant_subs) if sub_raw else relevant_subs[0]['id']
+            return category_id, subcategory_id
         except Exception as e:
-            self.log_message(f"Erro na chamada OpenAI (categoria) para '{product_name}': {e}", "error")
+            self.log_message(f"Erro na chamada OpenAI para '{product_name}': {e}", "error")
             return None, None
-
-        # Step 2: determine subcategory from matching category
-        relevant_subs = [s for s in subcategories if s['categoryId'] == category_id]
-        if not relevant_subs:
-            self.log_message(f"Nenhuma subcategoria para categoria '{category_id}', usando sem subcategoria", "warning")
-            return category_id, None
-
-        subs_text = "\n".join([f"id={s['id']} | nome={s['name']}" for s in relevant_subs])
-        sub_prompt = (
-            f"Produto: \"{product_name}\"\n"
-            f"Categoria: {category_id}\n\n"
-            f"Subcategorias disponiveis:\n{subs_text}\n\n"
-            f"Qual e o id da subcategoria mais adequada para este produto? "
-            f"Responda APENAS com o id exato da subcategoria."
-        )
-        try:
-            raw_sub = self._call_openai(sub_prompt, max_tokens=100)
-            subcategory_id = self._best_match(raw_sub, relevant_subs)
-        except Exception as e:
-            self.log_message(f"Erro na chamada OpenAI (subcategoria) para '{product_name}': {e}", "error")
-            subcategory_id = relevant_subs[0]['id']
-
-        return category_id, subcategory_id
 
     def update_product_categories(self, product_id, estabelecimento_id,
                                    category_id, subcategory_id,
@@ -874,7 +861,7 @@ class ProductCategorizerAgent:
             }
             self.update_progress()
 
-            self.log_message(f"Processando {total} produtos (8 paralelos)", "info")
+            self.log_message(f"Processando {total} produtos (2 paralelos, 1 chamada por produto)", "info")
 
             def _cat_one(args):
                 i, product = args
@@ -911,7 +898,7 @@ class ProductCategorizerAgent:
                     categorizer_state['progress']['estimated_cost'] = self.estimated_cost
                 self.update_progress()
 
-            with ThreadPoolExecutor(max_workers=3) as executor:
+            with ThreadPoolExecutor(max_workers=2) as executor:
                 list(executor.map(_cat_one, enumerate(products, 1)))
 
             prog = categorizer_state['progress']
