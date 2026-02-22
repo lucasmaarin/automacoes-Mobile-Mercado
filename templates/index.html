@@ -1207,9 +1207,11 @@
                 if(r.success && r.categories.length) {
                     grid.innerHTML=''; grid.className='cat-grid';
                     r.categories.forEach(cat => {
-                        const id='c-'+cat.replace(/\s/g,'-');
+                        const catId = cat.id || cat;
+                        const catName = cat.name || cat;
+                        const id='c-'+catId.replace(/\s/g,'-');
                         const item=document.createElement('div'); item.className='cat-item';
-                        item.innerHTML='<input type="checkbox" class="ccb" id="'+id+'" value="'+cat+'" onchange="Renamer.updateCount()"><label for="'+id+'">'+cat+'</label>';
+                        item.innerHTML='<input type="checkbox" class="ccb" id="'+id+'" value="'+catId+'" onchange="Renamer.updateCount()"><label for="'+id+'">'+catName+'</label>';
                         item.onclick = e => { if(e.target.tagName!=='INPUT') { const cb=item.querySelector('input'); cb.checked=!cb.checked; Renamer.updateCount(); }};
                         grid.appendChild(item);
                     });

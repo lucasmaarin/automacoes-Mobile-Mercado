@@ -95,8 +95,6 @@ zerograu.json
 zerograu_user.json
 
 # Scripts auxiliares / testes locais
-firestore_for_json.py
-firestore_simple.py
-nome_cat.py
-nome_cats.py
+# manter o README na pasta `scripts/` mas ignorar os arquivos .py
+scripts/*.py
 anotacoes.txt

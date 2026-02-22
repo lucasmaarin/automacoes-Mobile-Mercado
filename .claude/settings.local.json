@@ -14,7 +14,22 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git branch:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(venv/Scripts/python.exe:*)",
+      "Bash(cmd.exe /c \"python --version 2>&1\")",
+      "Bash(cmd.exe /c \"where python 2>&1\")",
+      "Bash(/c/Users/lucas/AppData/Local/Programs/Python/Python311/python.exe -c \"import flask\")",
+      "Bash(/c/Users/lucas/AppData/Local/Programs/Python/Python311/python.exe -c:*)",
+      "Bash(powershell.exe -Command \":*)",
+      "Bash(cmd.exe /c \"start /B venv\\\\Scripts\\\\python.exe app.py > %TEMP%\\\\applog.txt 2>&1\")",
+      "Bash(powershell.exe -Command \"Get-Content $env:TEMP\\\\applog.txt\")",
+      "Bash(powershell.exe -Command \"Get-NetTCPConnection -State Listen 2>null | Where-Object LocalPort -eq 5000\")",
+      "Bash(powershell.exe -Command \"Get-Content $env:TEMP\\\\applog.txt -ErrorAction SilentlyContinue | Select-Object -First 50 | Out-String\")",
+      "Bash(cmd.exe /c \"cd /d C:\\\\Users\\\\lucas\\\\Desktop\\\\mobile_mercado\\\\padronizador_mobile_mercado && venv\\\\Scripts\\\\python.exe -c \"\"import socket; s=socket.socket\\(\\); s.bind\\(\\(''0.0.0.0'',5000\\)\\); print\\(''Porta 5000 livre''\\); s.close\\(\\)\"\" 2>&1\")",
+      "Bash(cmd.exe /c:*)",
+      "Bash(powershell.exe -Command \"Get-ChildItem ''C:\\\\Users\\\\lucas\\\\Desktop\\\\mobile_mercado\\\\padronizador_mobile_mercado'' -Name\")",
+      "WebFetch(domain:pypi.org)",
+      "Bash(powershell.exe -Command \"& ''C:\\\\Users\\\\lucas\\\\Desktop\\\\mobile_mercado\\\\padronizador_mobile_mercado\\\\venv\\\\Scripts\\\\pip.exe'' freeze 2>&1\")"
     ]
   }
 }
