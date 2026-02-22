@@ -4,6 +4,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+import openai as _openai_module
 from extensions import openai_client, socketio, _is_quota_error, emit_quota_exceeded
 from utils import to_json_safe, firestore_default, safe_sample, record_daily_usage, automation_state, undo_store, _undo_lock
 from utils import get_today_stats
@@ -124,18 +125,32 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
     def get_improved_product_name(self, product_name: str, custom_prompt: str = None) -> str:
         prompt = custom_prompt if custom_prompt else self.prompt_template
         full_prompt = prompt + self._prompt_suffix.format(produto_nome=product_name)
-        try:
-            response = openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": full_prompt}],
-                max_tokens=100,
-                temperature=0.3,
-            )
-        except Exception as e:
-            if _is_quota_error(e):
-                self.log_message("ERRO: Créditos da API OpenAI esgotados.", "error")
-                emit_quota_exceeded()
-            raise
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                response = openai_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": full_prompt}],
+                    max_tokens=100,
+                    temperature=0.3,
+                )
+            except _openai_module.RateLimitError as e:
+                if _is_quota_error(e):
+                    self.log_message("ERRO: Créditos da API OpenAI esgotados.", "error")
+                    emit_quota_exceeded()
+                    raise
+                wait = 0.5 * (2 ** attempt)  # 0.5s, 1s, 2s, 4s, 8s
+                self.log_message(f"Rate limit atingido, aguardando {wait:.1f}s (tentativa {attempt + 1}/{max_retries})...", "warning")
+                time.sleep(wait)
+                if attempt == max_retries - 1:
+                    raise
+                continue
+            except Exception as e:
+                if _is_quota_error(e):
+                    self.log_message("ERRO: Créditos da API OpenAI esgotados.", "error")
+                    emit_quota_exceeded()
+                raise
+            break
         if hasattr(response, 'usage') and response.usage:
             inp = response.usage.prompt_tokens
             out = response.usage.completion_tokens

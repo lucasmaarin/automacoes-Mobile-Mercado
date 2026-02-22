@@ -57,11 +57,15 @@ def _reload_openai_client(api_key: str):
 
 
 def _is_quota_error(exc: Exception) -> bool:
+    """Retorna True apenas para quota esgotada (insufficient_quota), não para rate limiting temporário."""
+    if not isinstance(exc, _openai_module.RateLimitError):
+        return False
+    # rate_limit_exceeded = throttling temporário (RPM/TPM), não é quota esgotada
+    code = getattr(exc, 'code', '') or ''
+    if code == 'rate_limit_exceeded':
+        return False
     msg = str(exc).lower()
-    return (
-        isinstance(exc, _openai_module.RateLimitError)
-        and ('insufficient_quota' in msg or 'quota' in msg or 'billing' in msg or 'exceeded' in msg)
-    )
+    return 'insufficient_quota' in msg or 'billing' in msg
 
 
 def emit_quota_exceeded():

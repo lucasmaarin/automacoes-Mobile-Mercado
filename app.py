@@ -440,21 +440,36 @@ class ProductCategorizerAgent:
             return []
 
     def _call_openai(self, prompt, max_tokens=60):
-        try:
-            response = openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": self.cat_system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=max_tokens,
-                temperature=0.1
-            )
-        except Exception as e:
-            if _is_quota_error(e):
-                self.log_message("ERRO: Créditos da API OpenAI esgotados. O agente foi interrompido.", "error")
-                emit_quota_exceeded()
-            raise
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                response = openai_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": self.cat_system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=max_tokens,
+                    temperature=0.1
+                )
+            except _openai_module.RateLimitError as e:
+                if _is_quota_error(e):
+                    self.log_message("ERRO: Créditos da API OpenAI esgotados. O agente foi interrompido.", "error")
+                    emit_quota_exceeded()
+                    raise
+                # Throttling temporário (RPM/TPM) — aguarda e tenta novamente
+                wait = 0.5 * (2 ** attempt)  # 0.5s, 1s, 2s, 4s, 8s
+                self.log_message(f"Rate limit atingido, aguardando {wait:.1f}s (tentativa {attempt + 1}/{max_retries})...", "warning")
+                time.sleep(wait)
+                if attempt == max_retries - 1:
+                    raise
+                continue
+            except Exception as e:
+                if _is_quota_error(e):
+                    self.log_message("ERRO: Créditos da API OpenAI esgotados. O agente foi interrompido.", "error")
+                    emit_quota_exceeded()
+                raise
+            break
         if hasattr(response, 'usage') and response.usage:
             inp = response.usage.prompt_tokens
             out = response.usage.completion_tokens
@@ -750,12 +765,12 @@ class ProductCategorizerAgent:
                 with self._lock:
                     _tick(ok)
 
-            with ThreadPoolExecutor(max_workers=8) as executor:
+            with ThreadPoolExecutor(max_workers=3) as executor:
                 list(executor.map(_phase1_one, enumerate(phase1, 1)))
 
             # ── Fase 2: avalia se produto pertence à categoria ───────────────
             if phase2 and categorizer_targeted_state['running']:
-                self.log_message_targeted(f"=== Fase 2: avaliando outros produtos ({len(phase2)}, 8 paralelos) ===", "info")
+                self.log_message_targeted(f"=== Fase 2: avaliando outros produtos ({len(phase2)}, 3 paralelos) ===", "info")
 
             def _phase2_one(args):
                 idx, product = args
@@ -788,7 +803,7 @@ class ProductCategorizerAgent:
                 with self._lock:
                     _tick(ok)
 
-            with ThreadPoolExecutor(max_workers=8) as executor:
+            with ThreadPoolExecutor(max_workers=3) as executor:
                 list(executor.map(_phase2_one, enumerate(phase2, len(phase1) + 1)))
 
             prog = categorizer_targeted_state['progress']
@@ -896,7 +911,7 @@ class ProductCategorizerAgent:
                     categorizer_state['progress']['estimated_cost'] = self.estimated_cost
                 self.update_progress()
 
-            with ThreadPoolExecutor(max_workers=8) as executor:
+            with ThreadPoolExecutor(max_workers=3) as executor:
                 list(executor.map(_cat_one, enumerate(products, 1)))
 
             prog = categorizer_state['progress']
