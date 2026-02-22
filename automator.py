@@ -161,6 +161,66 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
             record_daily_usage(inp + out, call_cost)
         return response.choices[0].message.content.strip()
 
+    def get_improved_names_batch(self, product_names: List[str], custom_prompt: str = None) -> List[str]:
+        """Melhora N nomes em uma única chamada. Retorna lista de nomes melhorados na mesma ordem."""
+        prompt = custom_prompt if custom_prompt else self.prompt_template
+        numbered = "\n".join(f"{i+1}. {name}" for i, name in enumerate(product_names))
+        full_prompt = (
+            f"{prompt}\n\n"
+            f"Melhore os nomes dos produtos abaixo. "
+            f"Responda APENAS no formato exato, uma linha por produto:\n"
+            f"N. nome_melhorado\n\n"
+            f"Produtos:\n{numbered}"
+        )
+        results = list(product_names)  # fallback: mantém o original
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                response = openai_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": full_prompt}],
+                    max_tokens=60 * len(product_names),
+                    temperature=0.3,
+                )
+            except _openai_module.RateLimitError as e:
+                if _is_quota_error(e):
+                    self.log_message("ERRO: Créditos da API OpenAI esgotados.", "error")
+                    emit_quota_exceeded()
+                    raise
+                wait = 0.5 * (2 ** attempt)
+                self.log_message(f"Rate limit atingido, aguardando {wait:.1f}s (tentativa {attempt + 1}/{max_retries})...", "warning")
+                time.sleep(wait)
+                if attempt == max_retries - 1:
+                    raise
+                continue
+            except Exception as e:
+                if _is_quota_error(e):
+                    self.log_message("ERRO: Créditos da API OpenAI esgotados.", "error")
+                    emit_quota_exceeded()
+                raise
+            break
+        if hasattr(response, 'usage') and response.usage:
+            inp = response.usage.prompt_tokens
+            out = response.usage.completion_tokens
+            call_cost = (inp * self.input_token_cost) + (out * self.output_token_cost)
+            with self._lock:
+                self.tokens_used += inp + out
+                self.estimated_cost += call_cost
+            record_daily_usage(inp + out, call_cost)
+        raw = response.choices[0].message.content.strip()
+        for line in raw.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                dot_idx = line.index('.')
+                n = int(line[:dot_idx].strip()) - 1
+                if 0 <= n < len(product_names):
+                    results[n] = line[dot_idx + 1:].strip()
+            except (ValueError, IndexError):
+                continue
+        return results
+
     def format_product_name(self, name: str) -> str:
         if not name:
             return name
@@ -195,51 +255,57 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
     def process_products_batch(self, products: List[Dict], estabelecimento_id: str,
                                 delay: float, dry_run: bool, custom_prompt: str):
         total = len(products)
+        BATCH_SIZE = 20
+        batches = [products[s:s + BATCH_SIZE] for s in range(0, total, BATCH_SIZE)]
 
-        def _process_one(args):
-            i, product = args
+        def _process_batch(args):
+            batch_start, batch = args
             if not automation_state['running']:
                 return
-            pid, pname = product['id'], product['name']
-            self.log_message(f"[{i}/{total}] {pname}", "info")
-            self.update_progress({'id': pid, 'name': pname, 'index': i, 'total': total})
+            names = [p['name'] for p in batch]
+            self.update_progress({'id': batch[0]['id'], 'name': names[0], 'index': batch_start + 1, 'total': total})
             try:
-                new_name = self.get_improved_product_name(pname, custom_prompt)
-                new_name = self.format_product_name(new_name)
+                new_names = self.get_improved_names_batch(names, custom_prompt)
             except Exception as e:
-                self.log_message(f"  Erro OpenAI: {e}", "error")
+                self.log_message(f"  Erro OpenAI no batch: {e}", "error")
                 with self._lock:
-                    automation_state['progress']['errors'] += 1
-                    automation_state['progress']['processed'] += 1
+                    automation_state['progress']['errors'] += len(batch)
+                    automation_state['progress']['processed'] += len(batch)
+                    automation_state['progress']['tokens_used'] = self.tokens_used
+                    automation_state['progress']['estimated_cost'] = self.estimated_cost
                 self.update_progress()
                 return
 
-            if new_name == pname:
-                self.log_message(f"  -> Sem alteração", "info")
-                with self._lock:
-                    automation_state['progress']['unchanged'] += 1
-                    automation_state['progress']['processed'] += 1
-                    automation_state['progress']['tokens_used'] = self.tokens_used
-                    automation_state['progress']['estimated_cost'] = self.estimated_cost
-                self.update_progress()
-            else:
-                self.log_message(f"  -> '{pname}' => '{new_name}'", "success")
-                ok = self.update_product_in_firestore(pid, estabelecimento_id, new_name, pname, dry_run)
-                with self._lock:
-                    if ok:
-                        automation_state['progress']['updated'] += 1
-                    else:
-                        automation_state['progress']['errors'] += 1
-                    automation_state['progress']['processed'] += 1
-                    automation_state['progress']['tokens_used'] = self.tokens_used
-                    automation_state['progress']['estimated_cost'] = self.estimated_cost
-                self.update_progress()
+            for j, (product, new_name) in enumerate(zip(batch, new_names)):
+                if not automation_state['running']:
+                    return
+                pid, pname = product['id'], product['name']
+                i = batch_start + j + 1
+                self.log_message(f"[{i}/{total}] {pname}", "info")
+                new_name = self.format_product_name(new_name)
+                if new_name == pname:
+                    self.log_message(f"  -> Sem alteração", "info")
+                    with self._lock:
+                        automation_state['progress']['unchanged'] += 1
+                        automation_state['progress']['processed'] += 1
+                        automation_state['progress']['tokens_used'] = self.tokens_used
+                        automation_state['progress']['estimated_cost'] = self.estimated_cost
+                    self.update_progress()
+                else:
+                    self.log_message(f"  -> '{pname}' => '{new_name}'", "success")
+                    ok = self.update_product_in_firestore(pid, estabelecimento_id, new_name, pname, dry_run)
+                    with self._lock:
+                        if ok:
+                            automation_state['progress']['updated'] += 1
+                        else:
+                            automation_state['progress']['errors'] += 1
+                        automation_state['progress']['processed'] += 1
+                        automation_state['progress']['tokens_used'] = self.tokens_used
+                        automation_state['progress']['estimated_cost'] = self.estimated_cost
+                    self.update_progress()
 
-            if delay > 0:
-                time.sleep(delay)
-
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            list(executor.map(_process_one, enumerate(products, 1)))
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            list(executor.map(_process_batch, ((i * BATCH_SIZE, b) for i, b in enumerate(batches))))
 
     def run_automation(self, estabelecimento_id: str, categories: List[str],
                        delay: float = 1.0, dry_run: bool = False, custom_prompt: str = None):
@@ -269,7 +335,7 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
                 'tokens_used': 0, 'estimated_cost': 0.0,
             }
             self.update_progress()
-            self.log_message(f"Processando {total} produtos (4 paralelos)", "info")
+            self.log_message(f"Processando {total} produtos em lotes de 20 (2 paralelos)", "info")
 
             self.process_products_batch(products, estabelecimento_id, delay, dry_run, custom_prompt)
 

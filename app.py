@@ -47,7 +47,9 @@ except Exception:
 # Configuração e extensões extraídas para módulos separados
 from config import logger, SECRET_KEY
 from extensions import init_extensions, init_firebase, get_db, _reload_openai_client, _is_quota_error, emit_quota_exceeded
-from utils import to_json_safe, firestore_default, safe_sample, get_today_stats, record_daily_usage
+from utils import (to_json_safe, firestore_default, safe_sample, get_today_stats, record_daily_usage,
+                   automation_state, explorer_state, categorizer_state, categorizer_targeted_state,
+                   undo_store, _undo_lock)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY
@@ -216,53 +218,7 @@ _load_daily_stats()
 # ============================================================
 # Estado global
 # ============================================================
-automation_state = {
-    'running': False,
-    'progress': {
-        'total': 0, 'processed': 0, 'updated': 0,
-        'unchanged': 0, 'errors': 0,
-        'tokens_used': 0, 'estimated_cost': 0.0
-    },
-    'current_product': None,
-    'logs': []
-}
-
-explorer_state = {
-    'exploring': False,
-    'progress': {'total_docs': 0, 'processed_docs': 0, 'collections_found': 0},
-    'current_path': None,
-    'logs': [],
-    'structure_cache': {}
-}
-
-categorizer_state = {
-    'running': False,
-    'progress': {
-        'total': 0, 'processed': 0, 'updated': 0,
-        'errors': 0, 'tokens_used': 0, 'estimated_cost': 0.0
-    },
-    'current_product': None,
-    'logs': []
-}
-
-categorizer_targeted_state = {
-    'running': False,
-    'progress': {
-        'total': 0, 'processed': 0, 'updated': 0,
-        'errors': 0, 'tokens_used': 0, 'estimated_cost': 0.0
-    },
-    'current_product': None,
-    'logs': []
-}
-
-# Histórico de desfazer — limpo no início de cada execução
-# Cada entrada: dict com dados suficientes para reverter a operação
-undo_store = {
-    'renamer': [],           # [{product_id, estabelecimento_id, old_name, new_name}]
-    'categorizer': [],       # [{product_id, estabelecimento_id, old_data, new_data}]
-    'categorizer_targeted': [],
-}
-_undo_lock = threading.Lock()
+# Estados e undo_store importados de utils.py — compartilhados com automator.py e categorizer.py
 
 
 from automator import FirestoreProductAutomator
