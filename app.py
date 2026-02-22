@@ -422,18 +422,29 @@ class ProductCategorizerAgent:
             self.log_message(f"Erro ao carregar subcategorias: {e}", "error")
             return []
 
-    def load_products(self, estabelecimento_id):
+    def load_products(self, estabelecimento_id, only_uncategorized=False, filter_category_id=None):
         try:
             col_ref = (self.db.collection('estabelecimentos')
                        .document(estabelecimento_id)
                        .collection('Products'))
-            docs = col_ref.stream()
             products = []
-            for doc in docs:
+            for doc in col_ref.stream():
                 data = doc.to_dict()
-                if data and data.get('name'):
-                    products.append({'id': doc.id, 'name': data['name']})
-            self.log_message(f"Carregados {len(products)} produtos", "info")
+                if not data or not data.get('name'):
+                    continue
+                cats = data.get('categoriesIds') or []
+                if only_uncategorized and cats:
+                    continue
+                if filter_category_id and filter_category_id not in cats:
+                    continue
+                products.append({'id': doc.id, 'name': data['name']})
+            filtro = []
+            if only_uncategorized:
+                filtro.append('apenas sem categoria')
+            if filter_category_id:
+                filtro.append(f'categoria={filter_category_id}')
+            desc = f" ({', '.join(filtro)})" if filtro else ''
+            self.log_message(f"Carregados {len(products)} produtos{desc}", "info")
             return products
         except Exception as e:
             self.log_message(f"Erro ao carregar produtos: {e}", "error")
@@ -522,6 +533,51 @@ class ProductCategorizerAgent:
         except Exception as e:
             self.log_message(f"Erro na chamada OpenAI para '{product_name}': {e}", "error")
             return None, None
+
+    def get_categories_batch(self, product_names, categories, subcategories):
+        """Categoriza N produtos em uma única chamada. Retorna lista de (cat_id, sub_id)."""
+        cats_text = "\n".join(f"{c['id']}|{c['name']}" for c in categories)
+        subs_text = "\n".join(f"{s['id']}|{s['categoryId']}|{s['name']}" for s in subcategories)
+        numbered = "\n".join(f"{i+1}. {name}" for i, name in enumerate(product_names))
+        prompt = (
+            f"CATEGORIAS (id|nome):\n{cats_text}\n\n"
+            f"SUBCATEGORIAS (id|categoria_id|nome):\n{subs_text}\n\n"
+            f"Produtos:\n{numbered}\n\n"
+            f"Responda APENAS com uma linha por produto no formato exato:\n"
+            f"N. categoria_id|subcategoria_id\n"
+            f"Onde N é o número do produto. Sem explicações."
+        )
+        results = [(None, None)] * len(product_names)
+        try:
+            raw = self._call_openai(prompt, max_tokens=40 * len(product_names))
+        except Exception as e:
+            self.log_message(f"Erro OpenAI no batch: {e}", "error")
+            return results
+        for line in raw.strip().split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                dot_idx = line.index('.')
+                n = int(line[:dot_idx].strip()) - 1
+                if n < 0 or n >= len(product_names):
+                    continue
+                rest = line[dot_idx + 1:].strip()
+                parts = rest.split('|')
+                cat_raw = parts[0].strip() if len(parts) >= 1 else ''
+                sub_raw = parts[1].strip() if len(parts) >= 2 else ''
+                category_id = self._best_match(cat_raw, categories) if cat_raw else None
+                if not category_id:
+                    continue
+                relevant_subs = [s for s in subcategories if s['categoryId'] == category_id]
+                if not relevant_subs:
+                    results[n] = (category_id, None)
+                else:
+                    subcategory_id = self._best_match(sub_raw, relevant_subs) if sub_raw else relevant_subs[0]['id']
+                    results[n] = (category_id, subcategory_id)
+            except (ValueError, IndexError):
+                continue
+        return results
 
     def update_product_categories(self, product_id, estabelecimento_id,
                                    category_id, subcategory_id,
@@ -812,7 +868,8 @@ class ProductCategorizerAgent:
             self.update_progress_targeted()
             return False
 
-    def run_categorization(self, estabelecimento_id, delay_between_products=0.5, dry_run=False):
+    def run_categorization(self, estabelecimento_id, delay_between_products=0.5, dry_run=False,
+                           only_uncategorized=False, filter_category_id=None):
         try:
             self.tokens_used = 0
             self.estimated_cost = 0
@@ -845,9 +902,9 @@ class ProductCategorizerAgent:
                 categorizer_state['running'] = False
                 return False
 
-            products = self.load_products(estabelecimento_id)
+            products = self.load_products(estabelecimento_id, only_uncategorized, filter_category_id)
             if not products:
-                self.log_message("Nenhum produto encontrado", "warning")
+                self.log_message("Nenhum produto encontrado com os filtros aplicados", "warning")
                 categorizer_state['running'] = False
                 return False
 
@@ -861,45 +918,49 @@ class ProductCategorizerAgent:
             }
             self.update_progress()
 
-            self.log_message(f"Processando {total} produtos (2 paralelos, 1 chamada por produto)", "info")
+            BATCH_SIZE = 20
+            batches = [products[s:s + BATCH_SIZE] for s in range(0, total, BATCH_SIZE)]
+            self.log_message(
+                f"Processando {total} produtos em {len(batches)} lotes de {BATCH_SIZE} (2 paralelos)", "info"
+            )
 
-            def _cat_one(args):
-                i, product = args
+            def _cat_batch(args):
+                batch_start, batch = args
                 if not categorizer_state['running']:
                     return
-                pid = product['id']
-                pname = product['name']
-                self.log_message(f"[{i}/{total}] {pname}", "info")
-                self.update_progress({'id': pid, 'name': pname, 'index': i, 'total': total})
-
-                category_id, subcategory_id = self.get_category_and_subcategory(
-                    pname, categories, subcategories
-                )
-
-                with self._lock:
-                    if not category_id or not subcategory_id:
-                        self.log_message(f"  Erro: nao foi possivel categorizar {pid}", "error")
-                        categorizer_state['progress']['errors'] += 1
-                    else:
-                        category_name = cat_by_id.get(category_id, {}).get('name', category_id)
-                        subcategory_name = sub_by_id.get(subcategory_id, {}).get('name', subcategory_id)
-                        self.log_message(f"  -> {category_name} / {subcategory_name}", "success")
-                        ok = self.update_product_categories(
-                            pid, estabelecimento_id,
-                            category_id, subcategory_id,
-                            category_name, subcategory_name, dry_run
-                        )
-                        if ok:
-                            categorizer_state['progress']['updated'] += 1
-                        else:
+                names = [p['name'] for p in batch]
+                self.update_progress({'id': batch[0]['id'], 'name': names[0], 'index': batch_start + 1, 'total': total})
+                cat_results = self.get_categories_batch(names, categories, subcategories)
+                for j, (product, (category_id, subcategory_id)) in enumerate(zip(batch, cat_results)):
+                    if not categorizer_state['running']:
+                        return
+                    pid, pname = product['id'], product['name']
+                    i = batch_start + j + 1
+                    self.log_message(f"[{i}/{total}] {pname}", "info")
+                    with self._lock:
+                        if not category_id:
+                            self.log_message(f"  Erro: nao foi possivel categorizar {pid}", "error")
                             categorizer_state['progress']['errors'] += 1
-                    categorizer_state['progress']['processed'] += 1
-                    categorizer_state['progress']['tokens_used'] = self.tokens_used
-                    categorizer_state['progress']['estimated_cost'] = self.estimated_cost
-                self.update_progress()
+                        else:
+                            category_name = cat_by_id.get(category_id, {}).get('name', category_id)
+                            subcategory_name = sub_by_id.get(subcategory_id, {}).get('name', subcategory_id) if subcategory_id else ''
+                            self.log_message(f"  -> {category_name} / {subcategory_name}", "success")
+                            ok = self.update_product_categories(
+                                pid, estabelecimento_id,
+                                category_id, subcategory_id,
+                                category_name, subcategory_name, dry_run
+                            )
+                            if ok:
+                                categorizer_state['progress']['updated'] += 1
+                            else:
+                                categorizer_state['progress']['errors'] += 1
+                        categorizer_state['progress']['processed'] += 1
+                        categorizer_state['progress']['tokens_used'] = self.tokens_used
+                        categorizer_state['progress']['estimated_cost'] = self.estimated_cost
+                    self.update_progress()
 
             with ThreadPoolExecutor(max_workers=2) as executor:
-                list(executor.map(_cat_one, enumerate(products, 1)))
+                list(executor.map(_cat_batch, ((i * BATCH_SIZE, b) for i, b in enumerate(batches))))
 
             prog = categorizer_state['progress']
             self.log_message("=== ESTATISTICAS FINAIS ===", "info")
@@ -1437,6 +1498,8 @@ def start_categorization():
         return jsonify({'error': 'estabelecimento_id e obrigatorio'}), 400
     delay = float(data.get('delay', 0.5))
     dry_run = bool(data.get('dry_run', False))
+    only_uncategorized = bool(data.get('only_uncategorized', False))
+    filter_category_id = data.get('filter_category_id', '').strip() or None
     custom_prompt = data.get('custom_prompt', '').strip() or None
 
     # Sobrescreve o prompt apenas para esta execucao (restaura ao final)
@@ -1446,7 +1509,11 @@ def start_categorization():
 
     def run():
         try:
-            categorizer.run_categorization(estabelecimento_id, delay, dry_run)
+            categorizer.run_categorization(
+                estabelecimento_id, delay, dry_run,
+                only_uncategorized=only_uncategorized,
+                filter_category_id=filter_category_id
+            )
         finally:
             if custom_prompt:
                 categorizer.cat_system_prompt = original_prompt

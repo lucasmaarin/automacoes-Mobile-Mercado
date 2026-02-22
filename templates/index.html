@@ -822,7 +822,7 @@
                     <div class="row">
                         <div class="field">
                             <label>Estabelecimento</label>
-                            <select id="catEstSel" class="est-sel" onchange="handleEstChange('catEstSel','catEstCustom')">
+                            <select id="catEstSel" class="est-sel" onchange="handleEstChange('catEstSel','catEstCustom'); Cat.loadCategories()">
                                 <option value="estabelecimento-teste" selected>Estabelecimento Teste</option>
                                 <option value="jQQjHTCc2zW1tuZMQzGF">Zero Grau</option>
                                 <option value="__custom__">Personalizado...</option>
@@ -831,10 +831,19 @@
                         </div>
                         <div class="field sm"><label>Delay (s)</label><input type="number" id="catDelay" value="0.5" min="0" max="10" step="0.1"></div>
                     </div>
-                    <div style="margin-top:8px">
+                    <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
                         <label style="display:flex;align-items:center;gap:8px;font-size:.84rem;color:var(--text-secondary);cursor:pointer">
                             <input type="checkbox" id="catDryRun" style="width:15px;height:15px;accent-color:var(--accent)"> Modo Dry Run (sem salvar)
                         </label>
+                        <label style="display:flex;align-items:center;gap:8px;font-size:.84rem;color:var(--text-secondary);cursor:pointer">
+                            <input type="checkbox" id="catOnlyUncategorized" style="width:15px;height:15px;accent-color:var(--accent)"> Apenas produtos sem categoria
+                        </label>
+                    </div>
+                    <div style="margin-top:10px">
+                        <label style="font-size:.84rem;color:var(--text-secondary);display:block;margin-bottom:4px">Filtrar por categoria (opcional)</label>
+                        <select id="catFilterCategory" style="width:100%;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.84rem">
+                            <option value="">Todas as categorias</option>
+                        </select>
                     </div>
                 </div>
                 <div class="prompt-section">
@@ -1358,8 +1367,11 @@
             if(!estId){ toast('Selecione o estabelecimento','warning'); return; }
             const delay = parseFloat($('catDelay').value)||0.5;
             const dryRun = $('catDryRun').checked;
+            const onlyUncategorized = $('catOnlyUncategorized').checked;
+            const filterCategory = $('catFilterCategory').value.trim();
             const prompt = $('catPromptTa').value.trim();
-            const payload = {estabelecimento_id:estId, delay, dry_run:dryRun};
+            const payload = {estabelecimento_id:estId, delay, dry_run:dryRun, only_uncategorized:onlyUncategorized};
+            if(filterCategory) payload.filter_category_id = filterCategory;
             if(prompt) payload.custom_prompt = prompt;
             try {
                 const r = await (await fetch(API+'/api/categorizer/start',{
@@ -1453,6 +1465,24 @@
                 if(r.success){ toast('Revertidos '+r.reverted+' produtos'+(r.errors?' ('+r.errors+' erros)':''),'success'); $('catUndo').style.display='none'; }
                 else toast('Erro: '+r.error,'error');
             } catch(e){ toast('Erro: '+e.message,'error'); }
+        },
+
+        async loadCategories() {
+            const estId = getEstId('catEstSel','catEstCustom');
+            const sel = $('catFilterCategory');
+            sel.innerHTML = '<option value="">Todas as categorias</option>';
+            if(!estId) return;
+            try {
+                const r = await (await fetch(API+'/api/categorizer/categories?estabelecimento_id='+encodeURIComponent(estId))).json();
+                if(r.categories) {
+                    r.categories.forEach(cat => {
+                        const o = document.createElement('option');
+                        o.value = cat.id || cat;
+                        o.textContent = cat.name || cat;
+                        sel.appendChild(o);
+                    });
+                }
+            } catch(e) {}
         }
     };
 
@@ -1813,6 +1843,7 @@
         fetch(API+'/api/stats/daily').then(r=>r.json()).then(d=>{ if(d.today) updateDailyStats(d.today); }).catch(()=>{});
         Renamer.loadPrompt();
         Cat.loadPrompt();
+        Cat.loadCategories();
         Settings.load();
         if (!localStorage.getItem(TOUR_KEY)) Tour.start();
     });
