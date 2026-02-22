@@ -86,6 +86,7 @@ service-account*.json
 appmobileprod-*.json
 
 # Arquivos JSON de dados / runtime
+db_json/
 product.json
 sub.json
 users.json
@@ -99,4 +100,3 @@ firestore_simple.py
 nome_cat.py
 nome_cats.py
 anotacoes.txt
-
