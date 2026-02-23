@@ -404,6 +404,27 @@
             gap: 8px;
             margin-bottom: 12px;
         }
+        /* === Categorizador progress bar === */
+        .prog-wrap {
+            background: var(--surface-alt);
+            border-radius: var(--radius);
+            overflow: hidden;
+            height: 24px;
+            position: relative;
+            margin-bottom: 10px;
+            border: 1px solid var(--border);
+        }
+        .prog-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), #818cf8);
+            width: 0%;
+            transition: width .4s cubic-bezier(.4,0,.2,1);
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+            gap: 8px;
+        }
         .stat {
             text-align: center;
             padding: 12px 4px 10px;
@@ -657,6 +678,131 @@
             box-shadow: 0 2px 8px rgba(79,108,247,.3);
         }
         .tour-btn-next:hover { background: var(--accent-hover); }
+
+        /* ============================================================
+           RESPONSIVIDADE MOBILE
+           ============================================================ */
+
+        /* Tablet / telas médias */
+        @media (max-width: 768px) {
+            body { padding: 12px; }
+
+            .app-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+                padding: 14px 16px;
+            }
+            .app-header > div:last-child {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .tabs {
+                flex-wrap: wrap;
+                gap: 4px;
+            }
+            .tab-btn {
+                flex: 1 1 calc(50% - 4px);
+                padding: 9px 8px;
+                font-size: .78rem;
+                text-align: center;
+            }
+
+            .stats-row {
+                grid-template-columns: repeat(3, 1fr);
+            }
+
+            .row {
+                flex-wrap: wrap;
+            }
+            .row .sm {
+                flex: 1 1 100%;
+            }
+
+            .tokens-bar {
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+
+            .daily-counter {
+                font-size: .7rem;
+                padding: 4px 9px;
+            }
+        }
+
+        /* Celular pequeno */
+        @media (max-width: 480px) {
+            body { padding: 8px; }
+
+            .app-header h1 { font-size: .95rem; }
+
+            .tab-btn {
+                flex: 1 1 calc(50% - 4px);
+                padding: 8px 4px;
+                font-size: .74rem;
+            }
+
+            .stats-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            /* Tokens e Custo ficam na última linha inteiros */
+            .stats-row .stat:nth-last-child(-n+2):nth-child(odd) {
+                grid-column: span 2;
+            }
+
+            .card { padding: 14px 14px; }
+
+            .btn-group {
+                gap: 4px;
+            }
+            .btn-group .btn {
+                padding: 7px 10px;
+                font-size: .75rem;
+            }
+
+            .prompt-ta { min-height: 180px; font-size: .73rem; }
+
+            .cat-grid {
+                grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            }
+
+            .log-box { max-height: 140px; }
+
+            .daily-counter { display: none; }
+
+            .conn-status { font-size: .7rem; padding: 4px 9px; }
+
+            /* Ajuste no cabeçalho com status e sem daily counter no cel */
+            .app-header > div:last-child {
+                justify-content: flex-end;
+            }
+
+            /* Tour card não ultrapassa a largura da tela */
+            #tourCard { width: calc(100vw - 32px); min-width: 0; padding: 18px 16px 16px; }
+
+            /* Settings: grid ocupa 100% */
+            #tab-settings [style*="max-width:400px"],
+            #tab-settings [style*="max-width: 400px"] {
+                max-width: 100% !important;
+            }
+
+            /* Botões de settings ocupam largura total */
+            #tab-settings .btn-p[style*="width:fit-content"],
+            #tab-settings .btn-p[style*="width: fit-content"] {
+                width: 100% !important;
+                justify-content: center;
+            }
+
+            /* Linha de .row no explorer avançado empilha */
+            #tab-explorer .row {
+                flex-direction: column;
+            }
+            #tab-explorer .row .btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
     </style>
 </head>
 <body>
