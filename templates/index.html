@@ -212,27 +212,30 @@
         }
 
         /* === Form === */
-        .field { margin-bottom: 10px; }
+        .field { margin-bottom: 12px; }
         .field label {
             display: block;
-            font-size: .76rem;
+            font-size: .78rem;
             font-weight: 600;
             color: var(--text-secondary);
-            margin-bottom: 5px;
+            margin-bottom: 7px;
+            letter-spacing: 0.3px;
         }
         .field input[type="text"],
+        .field input[type="password"],
         .field input[type="number"] {
             width: 100%;
-            padding: 9px 12px;
-            border: 1px solid var(--border);
+            padding: 12px 14px;
+            border: 1.5px solid var(--border);
             border-radius: var(--radius);
             font-size: .84rem;
             color: var(--text);
             background: var(--surface);
             transition: all var(--transition);
+            font-family: inherit;
         }
-        .field input:hover { border-color: var(--border-hover); }
-        .field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,108,247,.12); }
+        .field input:hover { border-color: var(--border-hover); background: var(--surface-alt); }
+        .field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,108,247,.15); background: var(--surface); }
         .row { display: flex; gap: 12px; align-items: flex-end; }
         .row .field { flex:1; margin-bottom:0; }
         .row .sm { flex: 0 0 90px; }
@@ -508,6 +511,23 @@
         .json-out::-webkit-scrollbar { width: 6px; height: 6px; }
         .json-out::-webkit-scrollbar-track { background: transparent; }
         .json-out::-webkit-scrollbar-thumb { background: #3d4566; border-radius: 4px; }
+        /* JSON syntax highlighting */
+        .json-key  { color: #7dd3fc; }
+        .json-str  { color: #86efac; }
+        .json-num  { color: #fca5a5; }
+        .json-bool { color: #fdba74; }
+        .json-null { color: #94a3b8; font-style: italic; }
+        .json-punc { color: #6b7194; }
+        /* Path chips */
+        .path-chip {
+            display: inline-flex; align-items: center; gap: 5px;
+            font-size: .76rem; font-weight: 600; font-family: inherit;
+            padding: 5px 11px; border-radius: 20px; cursor: pointer;
+            background: var(--surface-alt); border: 1px solid var(--border);
+            color: var(--text-secondary); transition: all var(--transition);
+            white-space: nowrap;
+        }
+        .path-chip:hover { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
         .sugg-drop {
             background: var(--surface);
             border: 1px solid var(--border);
@@ -1020,18 +1040,16 @@
                     </select>
                     <input type="text" id="renEstCustom" class="est-custom" style="display:none" placeholder="ID personalizado" spellcheck="false">
                 </div>
-                <div class="row" style="margin-top:4px">
-                    <div class="field">
-                        <label>Delay entre produtos (s)</label>
-                        <input type="number" id="delay" value="0" min="0" step="0.1">
-                    </div>
-                    <div class="field" style="flex:0 0 auto;padding-bottom:2px;display:flex;align-items:flex-end">
-                        <label class="toggle-sw">
-                            <input type="checkbox" id="dryRun">
-                            <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                            <span>Modo de teste (Dry Run)</span>
-                        </label>
-                    </div>
+                <div class="field" style="margin-top:8px">
+                    <label>Delay entre produtos (s)</label>
+                    <input type="number" id="delay" value="0" min="0" step="0.1">
+                </div>
+                <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+                    <label class="toggle-sw">
+                        <input type="checkbox" id="dryRun">
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                        <span>Modo de teste (Dry Run)</span>
+                    </label>
                 </div>
             </div>
 
@@ -1333,6 +1351,50 @@
                     <strong>Avançado:</strong> mesmo que o Rápido, mas com sugestões automáticas de caminho conforme você digita, cache de resultados e log de execução.
                 </div>
             </div>
+            <div class="card" style="margin-bottom:14px">
+                <div class="card-label">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                    Atalhos de Caminho
+                </div>
+                <div class="field" style="margin-bottom:10px">
+                    <label>Estabelecimento</label>
+                    <select id="expEstSel" class="est-sel" onchange="handleEstChange('expEstSel','expEstCustom')">
+                        <option value="" disabled>Carregando...</option>
+                    </select>
+                    <input type="text" id="expEstCustom" class="est-custom" style="display:none" placeholder="ID personalizado" spellcheck="false">
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px">
+                    <button class="path-chip" onclick="ExpPaths.use('estabelecimentos/{id}/Products')" title="produtos">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                        Produtos
+                    </button>
+                    <button class="path-chip" onclick="ExpPaths.use('estabelecimentos/{id}/ProductCategories')" title="categorias">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                        Categorias
+                    </button>
+                    <button class="path-chip" onclick="ExpPaths.use('estabelecimentos/{id}/ProductSubcategories')" title="subcategorias">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                        Subcategorias
+                    </button>
+                    <button class="path-chip" onclick="ExpPaths.use('ReturnSales')" title="vendas com retorno">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.8"/></svg>
+                        ReturnSales
+                    </button>
+                    <button class="path-chip" onclick="ExpPaths.use('Stats')" title="estatísticas gerais">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                        Stats
+                    </button>
+                    <button class="path-chip" onclick="ExpPaths.use('DailyStats')" title="estatísticas diárias">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        DailyStats
+                    </button>
+                    <button class="path-chip" onclick="ExpPaths.use('MonthlyStats')" title="estatísticas mensais">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="8" y2="18"/><line x1="12" y1="14" x2="12" y2="18"/><line x1="16" y1="14" x2="16" y2="18"/></svg>
+                        MonthlyStats
+                    </button>
+                </div>
+            </div>
+
             <div class="subtabs">
                 <button class="stab active" onclick="switchSub('simple')">Rápido</button>
                 <button class="stab" onclick="switchSub('advanced')">Avançado</button>
@@ -1724,6 +1786,38 @@
         }
     };
 
+    // === JSON syntax highlight ===
+    function syntaxHighlight(obj) {
+        const json = JSON.stringify(obj, null, 2);
+        return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?|[{}\[\],:])/g, match => {
+            if (/^".*":$/.test(match))  return '<span class="json-key">'  + match + '</span>';
+            if (/^"/.test(match))        return '<span class="json-str">'  + match + '</span>';
+            if (/true|false/.test(match)) return '<span class="json-bool">' + match + '</span>';
+            if (/null/.test(match))      return '<span class="json-null">' + match + '</span>';
+            if (/^[{}\[\],:]$/.test(match)) return '<span class="json-punc">' + match + '</span>';
+            return '<span class="json-num">' + match + '</span>';
+        });
+    }
+    function renderJson(el, obj) {
+        try { el.innerHTML = syntaxHighlight(obj); }
+        catch(e) { el.textContent = JSON.stringify(obj, null, 2); }
+    }
+
+    // === Explorer Path Shortcuts ===
+    const ExpPaths = {
+        use(template) {
+            const estId = getEstId('expEstSel', 'expEstCustom');
+            if (template.includes('{id}') && !estId) {
+                toast('Selecione o estabelecimento nos atalhos', 'warning'); return;
+            }
+            const path = template.replace('{id}', estId);
+            // Preenche o campo do painel ativo
+            const active = document.querySelector('#tab-explorer .spanel.active');
+            const input = active && active.querySelector('input[type="text"]');
+            if (input) { input.value = path; input.dispatchEvent(new Event('input')); }
+        }
+    };
+
     // === Simple Explorer ===
     const SExp = {
         _json: null,
@@ -1731,7 +1825,7 @@
             const path=$('sPath').value.trim(), max=parseInt($('sMax').value)||5;
             if(!path){toast('Informe o caminho','warning');return;}
             $('sResult').textContent='Carregando...';
-            try { const r=await(await fetch(API+'/api/explorer-simple/explore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,max_docs:max})})).json(); this._json=r; $('sResult').textContent=JSON.stringify(r,null,2); }
+            try { const r=await(await fetch(API+'/api/explorer-simple/explore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,max_docs:max})})).json(); this._json=r; renderJson($('sResult'),r); }
             catch(e){$('sResult').textContent='Erro: '+e.message;}
         },
         copy() { if(this._json) navigator.clipboard.writeText(JSON.stringify(this._json,null,2)).then(()=>toast('JSON copiado','success')).catch(()=>toast('Erro ao copiar','error')); }
@@ -1743,7 +1837,7 @@
         async explore() {
             const path=$('aPath').value.trim(), max=parseInt($('aMax').value)||10;
             $('aResult').textContent='Carregando...';
-            try { const r=await(await fetch(API+'/api/explorer/explore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,max_docs:max})})).json(); this._json=r; $('aResult').textContent=JSON.stringify(r,null,2); }
+            try { const r=await(await fetch(API+'/api/explorer/explore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,max_docs:max})})).json(); this._json=r; renderJson($('aResult'),r); }
             catch(e){$('aResult').textContent='Erro: '+e.message;}
         },
         onInput() { clearTimeout(this._to); this._to=setTimeout(()=>this.suggest(),400); },
@@ -1753,7 +1847,7 @@
             try { const r=await(await fetch(API+'/api/explorer/suggestions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})})).json();
             if(r.success&&r.suggestions.length){list.innerHTML='';r.suggestions.forEach(s=>{const o=document.createElement('div');o.className='sugg-opt';o.textContent=s;o.onclick=()=>{$('aPath').value=s;list.style.display='none';};list.appendChild(o);});list.style.display='block';}else list.style.display='none';}catch(e){list.style.display='none';}
         },
-        async cache() { try{const r=await(await fetch(API+'/api/explorer/cache')).json();this._json=r;$('aResult').textContent=JSON.stringify(r,null,2);}catch(e){$('aResult').textContent='Erro: '+e.message;} },
+        async cache() { try{const r=await(await fetch(API+'/api/explorer/cache')).json();this._json=r;renderJson($('aResult'),r);}catch(e){$('aResult').textContent='Erro: '+e.message;} },
         copy() { if(this._json) navigator.clipboard.writeText(JSON.stringify(this._json,null,2)).then(()=>toast('JSON copiado','success')).catch(()=>toast('Erro ao copiar','error')); }
     };
 
@@ -2223,7 +2317,7 @@
         },
 
         _populate() {
-            const SEL_IDS = ['renEstSel', 'catEstSel', 'catDirEstSel'];
+            const SEL_IDS = ['renEstSel', 'catEstSel', 'catDirEstSel', 'expEstSel'];
             SEL_IDS.forEach(selId => {
                 const sel = document.getElementById(selId);
                 if (!sel) return;

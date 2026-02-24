@@ -158,6 +158,46 @@
         button[type="submit"]:active {
             transform: translateY(1px);
         }
+
+        .remember-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .remember-row input[type="checkbox"] {
+            display: none;
+        }
+        .toggle-track {
+            position: relative;
+            width: 34px;
+            height: 19px;
+            flex-shrink: 0;
+            background: var(--border);
+            border-radius: 10px;
+            transition: background .2s;
+        }
+        .toggle-thumb {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 13px;
+            height: 13px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,.25);
+            transition: left .2s;
+        }
+        .remember-row input:checked + .toggle-track { background: var(--accent); }
+        .remember-row input:checked + .toggle-track .toggle-thumb { left: 18px; }
+        .remember-label {
+            font-size: .82rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: none;
+            letter-spacing: 0;
+        }
     </style>
 </head>
 <body>
@@ -195,6 +235,11 @@
                         required
                     >
                 </div>
+                <label class="remember-row">
+                    <input type="checkbox" name="remember" id="remember" checked>
+                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                    <span class="remember-label">Manter conectado por 30 dias</span>
+                </label>
                 <button type="submit">Entrar</button>
             </form>
         </div>

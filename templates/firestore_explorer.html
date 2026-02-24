@@ -12,7 +12,43 @@
     input { width: 80%; padding: 10px; border-radius: 8px; border: 1px solid #ccc; }
     button { padding: 10px 20px; margin: 10px 5px; border: none; border-radius: 8px; background: #067ae0; color: white; cursor: pointer; }
     button:hover { background: #045ca6; }
-    pre { background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 8px; overflow-x: auto; max-height: 500px; }
+    .search-box {
+      margin-top: 15px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .search-box input {
+      flex: 1;
+    }
+    .search-box button {
+      margin: 0;
+      white-space: nowrap;
+    }
+    .search-info {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #666;
+    }
+    .search-controls {
+      margin-top: 10px;
+      display: flex;
+      gap: 10px;
+    }
+    .search-controls button {
+      padding: 8px 16px;
+      margin: 0;
+      font-size: 12px;
+    }
+    pre { background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 8px; overflow-x: auto; max-height: 850px; overflow-y: auto; }
+    .highlight { background-color: #ffff00; color: #000; font-weight: bold; border-radius: 3px; padding: 2px 4px; }
+    .match-context {
+      background: #2d2d2d;
+      margin: 10px 0;
+      padding: 10px;
+      border-left: 3px solid #067ae0;
+      border-radius: 4px;
+    }
   </style>
 </head>
 <body>
@@ -21,17 +57,34 @@
     <input type="text" id="path" placeholder="Ex: estabelecimentos/XYZ/paymentMethods"/>
     <button onclick="explore()">Explorar</button>
     <button onclick="copyJSON()">Copiar JSON</button>
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="🔍 Buscar em todo JSON (ex: código de barras, ID, etc)..." onkeyup="searchJSON()"/>
+      <button onclick="clearSearch()">Limpar</button>
+    </div>
+    <div class="search-info" id="searchInfo"></div>
+    <div class="search-controls">
+      <button onclick="toggleFilterMode()">📌 Mostrar Apenas Resultados</button>
+      <button onclick="toggleHighlightMode()">⭐ Destacar Tudo</button>
+    </div>
     <div id="result"></div>
   </div>
 
   <script>
     let lastJSON = null;
+    let originalJSONString = null;
+    let filterMode = false;
+    let highlightMode = true;
 
     async function explore() {
       const path = document.getElementById('path').value.trim();
       if (!path) { alert("Digite um caminho válido!"); return; }
 
       document.getElementById('result').innerHTML = "<p><b>Carregando...</b></p>";
+      document.getElementById('searchInput').value = "";
+      document.getElementById('searchInfo').innerHTML = "";
+      filterMode = false;
+      highlightMode = true;
+      updateButtonStates();
 
       try {
         const res = await fetch("/api/explore", {
@@ -43,7 +96,8 @@
         const data = await res.json();
         if (data.success) {
           lastJSON = data.data;
-          document.getElementById('result').innerHTML = `<pre>${JSON.stringify(lastJSON, null, 2)}</pre>`;
+          originalJSONString = JSON.stringify(lastJSON, null, 2);
+          displayJSON(originalJSONString);
         } else {
           document.getElementById('result').innerHTML = `<p style="color:red;">Erro: ${data.error}</p>`;
         }
@@ -52,10 +106,116 @@
       }
     }
 
+    function displayJSON(jsonString) {
+      document.getElementById('result').innerHTML = `<pre>${escapeHtml(jsonString)}</pre>`;
+    }
+
+    function toggleFilterMode() {
+      filterMode = !filterMode;
+      updateButtonStates();
+      searchJSON();
+    }
+
+    function toggleHighlightMode() {
+      highlightMode = !highlightMode;
+      updateButtonStates();
+      searchJSON();
+    }
+
+    function updateButtonStates() {
+      const buttons = document.querySelectorAll('.search-controls button');
+      if (buttons[0]) {
+        buttons[0].style.background = filterMode ? '#067ae0' : '#888';
+        buttons[0].style.opacity = filterMode ? '1' : '0.6';
+      }
+      if (buttons[1]) {
+        buttons[1].style.background = highlightMode ? '#067ae0' : '#888';
+        buttons[1].style.opacity = highlightMode ? '1' : '0.6';
+      }
+    }
+
+    function searchJSON() {
+      const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
+      
+      if (!originalJSONString) {
+        document.getElementById('searchInfo').innerHTML = "Nenhum JSON carregado";
+        return;
+      }
+
+      if (!searchTerm) {
+        displayJSON(originalJSONString);
+        document.getElementById('searchInfo').innerHTML = "";
+        updateButtonStates();
+        return;
+      }
+
+      const jsonLines = originalJSONString.split('\n');
+      const matchingLines = [];
+      const matchingIndices = [];
+
+      jsonLines.forEach((line, index) => {
+        if (line.toLowerCase().includes(searchTerm)) {
+          matchingLines.push(line);
+          matchingIndices.push(index);
+        }
+      });
+
+      if (filterMode) {
+        // Modo filtro: mostrar apenas linhas que correspondem
+        const highlightedLines = matchingLines.map(line => {
+          const regex = new RegExp(`(${searchTerm})`, 'gi');
+          const escapedLine = escapeHtml(line);
+          return highlightedLines ? escapedLine.replace(regex, '<span class="highlight">$1</span>') : escapedLine;
+        });
+
+        const resultHTML = `<pre>${highlightedLines.join('\n')}</pre>`;
+        document.getElementById('result').innerHTML = resultHTML;
+      } else {
+        // Modo destaque: mostrar tudo com destaque nas correspondências
+        const highlightedLines = jsonLines.map(line => {
+          if (line.toLowerCase().includes(searchTerm)) {
+            const regex = new RegExp(`(${searchTerm})`, 'gi');
+            const escapedLine = escapeHtml(line);
+            return highlightMode ? escapedLine.replace(regex, '<span class="highlight">$1</span>') : escapedLine;
+          }
+          return escapeHtml(line);
+        });
+
+        const resultHTML = `<pre>${highlightedLines.join('\n')}</pre>`;
+        document.getElementById('result').innerHTML = resultHTML;
+      }
+
+      const matchCount = matchingLines.length;
+      document.getElementById('searchInfo').innerHTML = `<b>${matchCount}</b> linha(s) encontrada(s) contendo "<b>${searchTerm}</b>"${filterMode ? ' (Modo: Apenas Resultados)' : ' (Modo: Destacar)'}`;
+      updateButtonStates();
+    }
+
+    function clearSearch() {
+      document.getElementById('searchInput').value = "";
+      document.getElementById('searchInfo').innerHTML = "";
+      filterMode = false;
+      highlightMode = true;
+      updateButtonStates();
+      if (originalJSONString) {
+        displayJSON(originalJSONString);
+      }
+    }
+
     function copyJSON() {
       if (!lastJSON) return;
       navigator.clipboard.writeText(JSON.stringify(lastJSON, null, 2));
       alert("JSON copiado!");
+    }
+
+    function escapeHtml(text) {
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return text.replace(/[&<>"']/g, m => map[m]);
     }
   </script>
 </body>

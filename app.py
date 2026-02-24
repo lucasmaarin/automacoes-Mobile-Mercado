@@ -10,7 +10,7 @@ import logging
 import time
 import json
 from typing import List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from threading import Thread
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -53,6 +53,7 @@ from utils import (to_json_safe, firestore_default, safe_sample, get_today_stats
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 
 # Inicializa socketio, CORS e OpenAI client (setados no módulo extensions)
 init_extensions(app)
@@ -1037,6 +1038,8 @@ def login():
         if admin_user is None:
             error = 'Serviço indisponível. Tente novamente em instantes.'
         elif username == admin_user and password == admin_pass:
+            remember = request.form.get('remember') == 'on'
+            session.permanent = remember
             session['logged_in'] = True
             return redirect(url_for('index'))
         else:
