@@ -101,8 +101,7 @@
 <div class="top-bar">
   <div style="display: flex; gap: 8px; align-items: center; flex: 1;">
     <select class="est-select" id="estSel" onchange="load()">
-      <option value="estabelecimento-teste">Estabelecimento Teste</option>
-      <option value="jQQjHTCc2zW1tuZMQzGF">Zero Grau</option>
+      <option value="" disabled>Carregando...</option>
     </select>
     <button class="btn btn-p btn-sm" onclick="load()">Atualizar</button>
   </div>
@@ -512,7 +511,31 @@
     });
   }
 
-  load();
+  // Carrega estabelecimentos e popula o select antes de buscar dados
+  async function loadEstabelecimentos() {
+    try {
+      const r = await fetch('/api/settings/estabelecimentos');
+      const d = await r.json();
+      if (d.success && d.estabelecimentos.length) {
+        const sel = document.getElementById('estSel');
+        sel.innerHTML = '';
+        d.estabelecimentos.forEach(e => {
+          const opt = document.createElement('option');
+          opt.value = e.id;
+          opt.textContent = e.name;
+          sel.appendChild(opt);
+        });
+        sel.value = d.estabelecimentos[0].id;
+      }
+    } catch(e) {
+      // fallback: insere os padrões manualmente
+      const sel = document.getElementById('estSel');
+      sel.innerHTML = '<option value="estabelecimento-teste">Estabelecimento Teste</option><option value="jQQjHTCc2zW1tuZMQzGF">Zero Grau</option>';
+    }
+    load();
+  }
+
+  loadEstabelecimentos();
 </script>
 </body>
 </html>

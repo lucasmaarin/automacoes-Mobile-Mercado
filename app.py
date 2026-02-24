@@ -1145,6 +1145,73 @@ def save_theme():
 
 
 # ============================================================
+# Estabelecimentos
+# ============================================================
+_DEFAULT_ESTABELECIMENTOS = [
+    {'id': 'estabelecimento-teste', 'name': 'Estabelecimento Teste', 'default': True},
+    {'id': 'jQQjHTCc2zW1tuZMQzGF', 'name': 'Zero Grau', 'default': True},
+]
+
+
+@app.route('/api/settings/estabelecimentos', methods=['GET'])
+def get_estabelecimentos():
+    result = [dict(e) for e in _DEFAULT_ESTABELECIMENTOS]
+    default_ids = {e['id'] for e in _DEFAULT_ESTABELECIMENTOS}
+    try:
+        if db:
+            doc = db.collection('Automacoes').document('config').get()
+            if doc.exists:
+                extras = (doc.to_dict() or {}).get('estabelecimentos', [])
+                for e in extras:
+                    if e.get('id') and e['id'] not in default_ids:
+                        result.append({'id': e['id'], 'name': e.get('name', e['id']), 'default': False})
+    except Exception as e:
+        logger.warning(f'Erro ao carregar estabelecimentos: {e}')
+    return jsonify({'success': True, 'estabelecimentos': result})
+
+
+@app.route('/api/settings/estabelecimentos', methods=['POST'])
+def add_estabelecimento():
+    data = request.get_json() or {}
+    est_id = data.get('id', '').strip()
+    name = data.get('name', '').strip()
+    if not est_id or not name:
+        return jsonify({'success': False, 'error': 'ID e nome sao obrigatorios'}), 400
+    protected = {e['id'] for e in _DEFAULT_ESTABELECIMENTOS}
+    if est_id in protected:
+        return jsonify({'success': False, 'error': 'Esse ID ja e um estabelecimento padrao'}), 400
+    try:
+        doc_ref = db.collection('Automacoes').document('config')
+        doc = doc_ref.get()
+        extras = (doc.to_dict() or {}).get('estabelecimentos', []) if doc.exists else []
+        if any(e.get('id') == est_id for e in extras):
+            return jsonify({'success': False, 'error': 'Estabelecimento ja cadastrado'}), 400
+        extras.append({'id': est_id, 'name': name})
+        doc_ref.set({'estabelecimentos': extras, 'updated_at': datetime.now().isoformat()}, merge=True)
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f'Erro ao adicionar estabelecimento: {e}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/settings/estabelecimentos/<est_id>', methods=['DELETE'])
+def delete_estabelecimento(est_id):
+    protected = {e['id'] for e in _DEFAULT_ESTABELECIMENTOS}
+    if est_id in protected:
+        return jsonify({'success': False, 'error': 'Nao e possivel remover estabelecimentos padrao'}), 400
+    try:
+        doc_ref = db.collection('Automacoes').document('config')
+        doc = doc_ref.get()
+        extras = (doc.to_dict() or {}).get('estabelecimentos', []) if doc.exists else []
+        extras = [e for e in extras if e.get('id') != est_id]
+        doc_ref.set({'estabelecimentos': extras, 'updated_at': datetime.now().isoformat()}, merge=True)
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f'Erro ao remover estabelecimento: {e}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================
 # Rotas: Pagina principal
 # ============================================================
 @app.route('/')

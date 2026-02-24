@@ -679,6 +679,114 @@
         }
         .tour-btn-next:hover { background: var(--accent-hover); }
 
+        /* === Skeleton de carregamento === */
+        #appSkeleton {
+            position: fixed; inset: 0; z-index: 8999;
+            background: var(--bg); padding: 24px;
+            overflow: hidden; pointer-events: all;
+            transition: opacity .35s ease;
+        }
+        #appSkeleton.sk-hide { opacity: 0; pointer-events: none; }
+        @keyframes skShimmer {
+            0%   { background-position: -600px 0; }
+            100% { background-position:  600px 0; }
+        }
+        .sk {
+            background: linear-gradient(90deg,
+                var(--surface-alt) 25%, var(--border) 50%, var(--surface-alt) 75%);
+            background-size: 1200px 100%;
+            animation: skShimmer 1.5s ease infinite;
+            border-radius: var(--radius);
+        }
+        .sk-hdr  { height: 62px; border-radius: var(--radius-lg); margin-bottom: 24px; }
+        .sk-tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+        .sk-tabs .sk { flex: 1; height: 52px; border-radius: var(--radius); }
+        .sk-tabs .sk:nth-child(2) { animation-delay: .1s; }
+        .sk-tabs .sk:nth-child(3) { animation-delay: .2s; }
+        .sk-tabs .sk:nth-child(4) { animation-delay: .3s; }
+        .sk-card { border-radius: var(--radius-lg); margin-bottom: 14px; }
+
+        @media (max-width: 480px) {
+            #appSkeleton { padding: 8px; }
+            .sk-tabs .sk { height: 44px; }
+        }
+
+        /* ============================================================
+           UX/UI EXTRAS
+           ============================================================ */
+
+        /* Ponto de conexão com pulso animado */
+        @keyframes connPulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50%       { opacity: .45; transform: scale(1.5); }
+        }
+        .conn-ok::before { animation: connPulse 2.4s ease infinite; }
+
+        /* Tab icons */
+        .tab-btn { display: flex; align-items: center; justify-content: center; gap: 6px; }
+
+        /* Card-label icon */
+        .card-label { gap: 8px; }
+        .card-label > svg { flex-shrink: 0; opacity: .5; }
+
+        /* Toggle switch */
+        .toggle-sw {
+            display: inline-flex; align-items: center; gap: 10px;
+            cursor: pointer; user-select: none;
+            font-size: .84rem; color: var(--text-secondary);
+            padding: 5px 0; border: none; background: none;
+        }
+        .toggle-sw input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+        .toggle-track {
+            position: relative; width: 36px; height: 20px; flex-shrink: 0;
+            background: var(--border); border-radius: 10px; transition: background .2s;
+        }
+        .toggle-thumb {
+            position: absolute; top: 3px; left: 3px;
+            width: 14px; height: 14px; border-radius: 50%;
+            background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25);
+            transition: left .2s;
+        }
+        .toggle-sw input:checked + .toggle-track { background: var(--accent); }
+        .toggle-sw input:checked + .toggle-track .toggle-thumb { left: 19px; }
+
+        /* Empty state rico */
+        .empty-state {
+            display: flex; flex-direction: column; align-items: center;
+            padding: 32px 16px; gap: 8px; color: var(--muted);
+        }
+        .empty-state svg { opacity: .28; }
+        .empty-state b { font-size: .82rem; font-weight: 600; color: var(--text-secondary); }
+        .empty-state span { font-size: .76rem; text-align: center; line-height: 1.5; }
+
+        /* Log wrapper com header */
+        .log-wrap { margin-top: 12px; }
+        .log-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
+        .log-title { font-size: .69rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+        .log-clear { font-size: .7rem; background: none; border: none; cursor: pointer; color: var(--muted); padding: 0; font-family: inherit; transition: color var(--transition); }
+        .log-clear:hover { color: var(--text-secondary); text-decoration: underline; }
+
+        /* Report link no header */
+        .header-link {
+            font-size: .76rem; font-weight: 600; color: var(--accent);
+            text-decoration: none; padding: 5px 11px; border-radius: 20px;
+            background: var(--accent-light); border: 1px solid rgba(79,108,247,.2);
+            transition: all var(--transition); display: inline-flex; align-items: center; gap: 5px;
+            white-space: nowrap;
+        }
+        .header-link:hover { background: var(--accent); color: #fff; }
+
+        /* Undo button melhorado */
+        .undo-bar {
+            display: none; margin-top: 10px;
+            padding: 10px 14px; border-radius: var(--radius);
+            background: var(--orange-light); border: 1px solid #fde68a;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .undo-bar .undo-text { font-size: .8rem; color: #92400e; flex: 1; }
+        .undo-bar .btn-undo { font-size: .78rem; padding: 5px 12px; border-radius: var(--radius); background: var(--orange); color: #fff; border: none; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; transition: background .15s; }
+        .undo-bar .btn-undo:hover { background: #d97706; }
+
         /* ============================================================
            RESPONSIVIDADE MOBILE
            ============================================================ */
@@ -806,6 +914,22 @@
     </style>
 </head>
 <body>
+    <!-- Skeleton de carregamento — ocorre enquanto settings e estabelecimentos carregam do Firestore -->
+    <div id="appSkeleton">
+        <div style="max-width:980px;margin:0 auto">
+            <div class="sk sk-hdr"></div>
+            <div class="sk-tabs">
+                <div class="sk"></div>
+                <div class="sk"></div>
+                <div class="sk"></div>
+                <div class="sk"></div>
+            </div>
+            <div class="sk sk-card" style="height:128px"></div>
+            <div class="sk sk-card" style="height:164px"></div>
+            <div class="sk sk-card" style="height:46px"></div>
+        </div>
+    </div>
+
     <div class="toast-container" id="toasts"></div>
 
     <!-- Tour overlay -->
@@ -834,22 +958,40 @@
 
     <div class="app">
         <div class="app-header">
-            <h1>Automações Mobile Mercado</h1>
-            <div style="display:flex;align-items:center;gap:10px">
+            <h1>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                Automações Mobile Mercado
+            </h1>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <a href="/relatorio" class="header-link" target="_blank">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                    Relatório
+                </a>
                 <div class="daily-counter" title="Uso total de tokens hoje (todos os agentes)">
-                    <span>Hoje:</span>
-                    <strong id="dailyTokens">0</strong> tokens &bull;
-                    <strong id="dailyCost">$0.0000</strong>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    Hoje: <strong id="dailyTokens">0</strong> tokens &bull; <strong id="dailyCost">$0.0000</strong>
                 </div>
                 <span class="conn-status conn-err" id="connBadge">Desconectado</span>
             </div>
         </div>
 
         <div class="tabs">
-            <button class="tab-btn active" onclick="switchTab('renamer')">Padronizador de Nomes</button>
-            <button class="tab-btn" onclick="switchTab('explorer')">Explorador Firestore</button>
-            <button class="tab-btn" onclick="switchTab('categorizer')">Categorizador de Produtos</button>
-            <button class="tab-btn" onclick="switchTab('settings')">Configuracoes</button>
+            <button class="tab-btn active" onclick="switchTab('renamer')">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Padronizador de Nomes
+            </button>
+            <button class="tab-btn" onclick="switchTab('explorer')">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                Explorador Firestore
+            </button>
+            <button class="tab-btn" onclick="switchTab('categorizer')">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                Categorizador de Produtos
+            </button>
+            <button class="tab-btn" onclick="switchTab('settings')">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                Configurações
+            </button>
         </div>
 
         <!-- TAB: Renamer -->
@@ -861,19 +1003,20 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                 <div>
                     <strong>Padronizador de Nomes</strong>
-                    Usa IA para reescrever e padronizar os nomes dos produtos do estabelecimento selecionado.
-                    Carregue as categorias, selecione quais deseja processar e clique em Iniciar.
-                    Use <em>Dry Run</em> para visualizar as mudancas sem salvar no Firestore.
+                    Usa IA para reescrever e padronizar os nomes dos produtos do estabelecimento selecionado.<br>
+                    <strong>Fluxo:</strong> selecione o estabelecimento → clique em <em>Carregar</em> para buscar as categorias → marque as categorias desejadas → clique em <em>Iniciar</em>.<br>
+                    Ative <em>Modo de teste (Dry Run)</em> para visualizar as alterações sem salvar nada no Firestore. Ao finalizar, um botão de desfazer permite reverter toda a execução.
                 </div>
             </div>
             <div class="card">
-                <div class="card-label">Configuracoes</div>
+                <div class="card-label">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+                    Configurações
+                </div>
                 <div class="field">
                     <label>Estabelecimento</label>
                     <select id="renEstSel" class="est-sel" onchange="handleEstChange('renEstSel','renEstCustom')">
-                        <option value="estabelecimento-teste" selected>Estabelecimento Teste</option>
-                        <option value="jQQjHTCc2zW1tuZMQzGF">Zero Grau</option>
-                        <option value="__custom__">Personalizado...</option>
+                        <option value="" disabled>Carregando...</option>
                     </select>
                     <input type="text" id="renEstCustom" class="est-custom" style="display:none" placeholder="ID personalizado" spellcheck="false">
                 </div>
@@ -882,15 +1025,22 @@
                         <label>Delay entre produtos (s)</label>
                         <input type="number" id="delay" value="0" min="0" step="0.1">
                     </div>
-                    <div class="field" style="flex:0 0 auto;padding-bottom:2px">
-                        <label class="check"><input type="checkbox" id="dryRun"> Modo de Teste (Dry Run)</label>
+                    <div class="field" style="flex:0 0 auto;padding-bottom:2px;display:flex;align-items:flex-end">
+                        <label class="toggle-sw">
+                            <input type="checkbox" id="dryRun">
+                            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                            <span>Modo de teste (Dry Run)</span>
+                        </label>
                     </div>
                 </div>
             </div>
 
             <div class="card">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-                    <div class="card-label" style="margin-bottom:0">Categorias <span class="count" id="catCount" style="display:none">0</span></div>
+                    <div class="card-label" style="margin-bottom:0">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                        Categorias <span class="count" id="catCount" style="display:none">0</span>
+                    </div>
                     <div class="btn-group">
                         <button class="btn btn-p" id="btnLoadCats" onclick="Renamer.loadCategories()" style="display:flex;align-items:center;gap:5px">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.8"/></svg>
@@ -900,12 +1050,21 @@
                         <button class="btn btn-ghost" onclick="Renamer.selectAll(false)">Limpar</button>
                     </div>
                 </div>
-                <div id="catGrid"><div class="placeholder">Clique em "Carregar" para buscar as categorias</div></div>
+                <div id="catGrid">
+                    <div class="empty-state">
+                        <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                        <b>Nenhuma categoria carregada</b>
+                        <span>Selecione o estabelecimento e clique<br>em "Carregar" para buscar as categorias</span>
+                    </div>
+                </div>
             </div>
 
             <div class="prompt-section">
                 <div class="prompt-hdr" id="promptHdr" onclick="Renamer.togglePrompt()">
-                    <span>Instrucoes da IA <span class="dot" id="promptDot" title="Prompt modificado"></span></span>
+                    <span style="display:flex;align-items:center;gap:7px">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.55"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        Instruções da IA <span class="dot" id="promptDot" title="Prompt modificado"></span>
+                    </span>
                     <span class="arr">&#9660;</span>
                 </div>
                 <div class="prompt-bd" id="promptBd">
@@ -917,7 +1076,10 @@
                 </div>
             </div>
 
-            <button class="btn btn-p btn-w" id="btnStart" onclick="Renamer.toggle()">Iniciar</button>
+            <button class="btn btn-p btn-w" id="btnStart" onclick="Renamer.toggle()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+                Iniciar
+            </button>
 
             <div class="progress-area" id="progressArea">
                 <div class="cur-item" id="curItem"><div id="curInfo"></div></div>
@@ -933,7 +1095,13 @@
                     <div class="stat"><div class="stat-v" id="sUnch">0</div><div class="stat-l">Inalterados</div></div>
                     <div class="stat"><div class="stat-v red" id="sErr">0</div><div class="stat-l">Erros</div></div>
                 </div>
-                <div class="log-box" id="renamerLog"><div class="log-l info">Aguardando...</div></div>
+                <div class="log-wrap">
+                    <div class="log-header">
+                        <span class="log-title">Log de execução</span>
+                        <button class="log-clear" onclick="$('renamerLog').innerHTML=''">Limpar</button>
+                    </div>
+                    <div class="log-box" id="renamerLog"><div class="log-l info">Aguardando...</div></div>
+                </div>
                 <div id="renUndo" style="display:none;margin-top:10px;text-align:center">
                     <button class="btn btn-ghost" style="color:var(--orange);border-color:var(--orange)" onclick="Renamer.undo()">
                         &#8635; Desfazer ultima execucao (<span id="renUndoCount">0</span> produtos)
@@ -945,7 +1113,7 @@
         <!-- TAB: Categorizador -->
         <div class="tab-panel" id="tab-categorizer">
             <div class="subtabs" id="catSubTabs">
-                <button class="stab active" onclick="switchCatSub('auto')">Automatico</button>
+                <button class="stab active" onclick="switchCatSub('auto')">Automático</button>
                 <button class="stab" onclick="switchCatSub('dirigido')">Dirigido</button>
             </div>
 
@@ -957,44 +1125,57 @@
                 <div class="agent-info" id="catAutoHelp">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     <div>
-                        <strong>Categorizador Automatico</strong>
-                        Analisa o nome de cada produto e define automaticamente a <em>categoria</em> e a <em>subcategoria</em> mais adequada,
-                        escolhendo entre todas as opcoes disponiveis no Firestore — <strong>exceto Mercearia</strong>, que e gerenciada pelo modo Dirigido.
-                        Ideal para categorizar o restante do catalogo. Use <em>Dry Run</em> para testar sem salvar.
+                        <strong>Categorizador Automático</strong>
+                        Analisa o nome de cada produto e define automaticamente a <em>categoria</em> e a <em>subcategoria</em> mais adequada, escolhendo entre todas as opções disponíveis no Firestore.<br>
+                        <strong>Filtro de categoria:</strong> clique em <em>Carregar Categorias</em> para filtrar apenas produtos de uma categoria específica.<br>
+                        <strong>Apenas sem categoria:</strong> ao ativar esse toggle, o filtro e o carregamento de categorias são desabilitados e apenas produtos sem categoria são processados.<br>
+                        Ative <em>Modo de teste (Dry Run)</em> para simular sem salvar. Ao finalizar, um botão de desfazer permite reverter a execução.
                     </div>
                 </div>
                 <div class="card">
-                    <div class="card-label">Configuracao</div>
+                    <div class="card-label">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+                        Configuração
+                    </div>
                     <div class="row">
                         <div class="field">
                             <label>Estabelecimento</label>
-                            <select id="catEstSel" class="est-sel" onchange="handleEstChange('catEstSel','catEstCustom'); Cat.loadCategories()">
-                                <option value="estabelecimento-teste" selected>Estabelecimento Teste</option>
-                                <option value="jQQjHTCc2zW1tuZMQzGF">Zero Grau</option>
-                                <option value="__custom__">Personalizado...</option>
+                            <select id="catEstSel" class="est-sel" onchange="handleEstChange('catEstSel','catEstCustom')">
+                                <option value="" disabled>Carregando...</option>
                             </select>
                             <input type="text" id="catEstCustom" class="est-custom" style="display:none" placeholder="ID personalizado" spellcheck="false">
                         </div>
                         <div class="field sm"><label>Delay (s)</label><input type="number" id="catDelay" value="0.5" min="0" max="10" step="0.1"></div>
                     </div>
-                    <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
-                        <label style="display:flex;align-items:center;gap:8px;font-size:.84rem;color:var(--text-secondary);cursor:pointer">
-                            <input type="checkbox" id="catDryRun" style="width:15px;height:15px;accent-color:var(--accent)"> Modo Dry Run (sem salvar)
+                    <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+                        <label class="toggle-sw">
+                            <input type="checkbox" id="catDryRun">
+                            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                            <span>Modo de teste (Dry Run)</span>
                         </label>
-                        <label style="display:flex;align-items:center;gap:8px;font-size:.84rem;color:var(--text-secondary);cursor:pointer">
-                            <input type="checkbox" id="catOnlyUncategorized" style="width:15px;height:15px;accent-color:var(--accent)"> Apenas produtos sem categoria
+                        <label class="toggle-sw">
+                            <input type="checkbox" id="catOnlyUncategorized" onchange="Cat.onOnlyUncategorizedChange(this.checked)">
+                            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                            <span>Apenas produtos sem categoria</span>
                         </label>
                     </div>
-                    <div style="margin-top:10px">
-                        <label style="font-size:.84rem;color:var(--text-secondary);display:block;margin-bottom:4px">Filtrar por categoria (opcional)</label>
+                    <div style="margin-top:10px" id="catCategoryFilter">
+                        <label style="font-size:.84rem;color:var(--text-secondary);display:block;margin-bottom:6px">Filtrar por categoria (opcional)</label>
+                        <button class="btn btn-p" id="catLoadCatsBtn" style="width:100%;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:6px" onclick="Cat.loadCategories()">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.8"/></svg>
+                            Carregar Categorias
+                        </button>
                         <select id="catFilterCategory" style="width:100%;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.84rem">
-                            <option value="">Todas as categorias</option>
+                            <option value="">-- Todas as categorias --</option>
                         </select>
                     </div>
                 </div>
                 <div class="prompt-section">
                     <div class="prompt-hdr" id="catPromptHdr" onclick="Cat.togglePrompt()">
-                        <span>Instrucoes da IA <span class="dot" id="catPromptDot" title="Prompt modificado"></span></span>
+                        <span style="display:flex;align-items:center;gap:7px">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.55"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                            Instruções da IA <span class="dot" id="catPromptDot" title="Prompt modificado"></span>
+                        </span>
                         <span class="arr">&#9660;</span>
                     </div>
                     <div class="prompt-bd" id="catPromptBd">
@@ -1007,10 +1188,16 @@
                 </div>
 
                 <div class="card" style="text-align:center">
-                    <button class="btn btn-p" id="catBtn" onclick="Cat.toggle()" style="min-width:180px">Iniciar Categorizacao</button>
+                    <button class="btn btn-p" id="catBtn" onclick="Cat.toggle()" style="min-width:180px">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+                        Iniciar Categorização
+                    </button>
                 </div>
                 <div class="card" id="catProgressCard" style="display:none">
-                    <div class="card-label">Progresso</div>
+                    <div class="card-label">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                        Progresso
+                    </div>
                     <div class="prog-wrap"><div class="prog-bar" id="catProg" style="width:0%"></div></div>
                     <div style="font-size:.8rem;color:var(--muted);margin-top:6px;text-align:center" id="catProgLabel">0 / 0</div>
                     <div style="font-size:.78rem;color:var(--text-secondary);margin-top:6px;text-align:center" id="catCurrent"></div>
@@ -1022,7 +1209,13 @@
                     </div>
                     <div style="font-size:.78rem;color:var(--muted);margin-top:8px;text-align:right" id="catCost"></div>
                 </div>
-                <div class="log-box" id="catLog"><div class="log-l info">Aguardando...</div></div>
+                <div class="log-wrap">
+                    <div class="log-header">
+                        <span class="log-title">Log de execução</span>
+                        <button class="log-clear" onclick="$('catLog').innerHTML=''">Limpar</button>
+                    </div>
+                    <div class="log-box" id="catLog"><div class="log-l info">Aguardando...</div></div>
+                </div>
                 <div id="catUndo" style="display:none;margin-top:10px;text-align:center">
                     <button class="btn btn-ghost" style="color:var(--orange);border-color:var(--orange)" onclick="Cat.undo()">
                         &#8635; Desfazer ultima execucao (<span id="catUndoCount">0</span> produtos)
@@ -1038,21 +1231,23 @@
                 <div class="agent-info" id="catDirHelp">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     <div>
-                        <strong>Categorizador Dirigido — Mercearia</strong>
-                        <strong>Padrao:</strong> define a subcategoria correta nos produtos que ja sao de Mercearia.<br>
-                        <strong>Opcional:</strong> marque "Avaliar outros produtos" para que a IA tambem analise produtos de outras categorias e atribua Mercearia quando fizer sentido.<br>
-                        Fluxo: <strong>1.</strong> Selecione o estabelecimento → <strong>2.</strong> "Carregar Categorias" → <strong>3.</strong> Escolha a categoria alvo → <strong>4.</strong> Inicie.
+                        <strong>Categorizador Dirigido</strong>
+                        Você escolhe a categoria alvo e a IA define a <em>subcategoria</em> correta para cada produto dessa categoria.<br>
+                        <strong>Fluxo:</strong> selecione o estabelecimento → <em>Carregar Categorias</em> → escolha a categoria alvo → clique em <em>Iniciar Modo Dirigido</em>.<br>
+                        <strong>Avaliar outros produtos:</strong> ative esse toggle para que a IA também analise produtos de outras categorias e os mova para a categoria alvo quando fizer sentido.<br>
+                        Ative <em>Modo de teste (Dry Run)</em> para simular sem salvar. Ao finalizar, um botão de desfazer permite reverter a execução.
                     </div>
                 </div>
                 <div class="card">
-                    <div class="card-label">Configuracao</div>
+                    <div class="card-label">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+                        Configuração
+                    </div>
                     <div class="row">
                         <div class="field">
                             <label>Estabelecimento</label>
                             <select id="catDirEstSel" class="est-sel" onchange="handleEstChange('catDirEstSel','catDirEstCustom')">
-                                <option value="estabelecimento-teste" selected>Estabelecimento Teste</option>
-                                <option value="jQQjHTCc2zW1tuZMQzGF">Zero Grau</option>
-                                <option value="__custom__">Personalizado...</option>
+                                <option value="" disabled>Carregando...</option>
                             </select>
                             <input type="text" id="catDirEstCustom" class="est-custom" style="display:none" placeholder="ID personalizado" spellcheck="false">
                         </div>
@@ -1070,24 +1265,32 @@
                         </select>
                     </div>
 
-                    <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
-                        <label style="display:flex;align-items:center;gap:8px;font-size:.84rem;color:var(--text-secondary);cursor:pointer">
-                            <input type="checkbox" id="catDirIncludeOthers" style="width:15px;height:15px;accent-color:var(--accent)">
-                            Avaliar outros produtos e atribuir categoria quando fizer sentido
+                    <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px">
+                        <label class="toggle-sw">
+                            <input type="checkbox" id="catDirIncludeOthers">
+                            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                            <span>Avaliar outros produtos e atribuir categoria quando fizer sentido</span>
                         </label>
-                        <label style="display:flex;align-items:center;gap:8px;font-size:.84rem;color:var(--text-secondary);cursor:pointer">
-                            <input type="checkbox" id="catDirDryRun" style="width:15px;height:15px;accent-color:var(--accent)">
-                            Modo Dry Run (sem salvar)
+                        <label class="toggle-sw">
+                            <input type="checkbox" id="catDirDryRun">
+                            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                            <span>Modo de teste (Dry Run)</span>
                         </label>
                     </div>
                 </div>
 
                 <div class="card" style="text-align:center">
-                    <button class="btn btn-p" id="catDirBtn" onclick="CatDir.toggle()" style="min-width:180px">Iniciar Modo Dirigido</button>
+                    <button class="btn btn-p" id="catDirBtn" onclick="CatDir.toggle()" style="min-width:180px">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+                        Iniciar Modo Dirigido
+                    </button>
                 </div>
 
                 <div class="card" id="catDirProgressCard" style="display:none">
-                    <div class="card-label">Progresso</div>
+                    <div class="card-label">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                        Progresso
+                    </div>
                     <div class="prog-wrap"><div class="prog-bar" id="catDirProg" style="width:0%"></div></div>
                     <div style="font-size:.8rem;color:var(--muted);margin-top:6px;text-align:center" id="catDirProgLabel">0 / 0</div>
                     <div style="font-size:.78rem;color:var(--text-secondary);margin-top:6px;text-align:center" id="catDirCurrent"></div>
@@ -1101,7 +1304,13 @@
                     <div style="font-size:.78rem;color:var(--muted);margin-top:8px;text-align:right" id="catDirCost"></div>
                 </div>
 
-                <div class="log-box" id="catDirLog"><div class="log-l info">Aguardando...</div></div>
+                <div class="log-wrap">
+                    <div class="log-header">
+                        <span class="log-title">Log de execução</span>
+                        <button class="log-clear" onclick="$('catDirLog').innerHTML=''">Limpar</button>
+                    </div>
+                    <div class="log-box" id="catDirLog"><div class="log-l info">Aguardando...</div></div>
+                </div>
                 <div id="catDirUndo" style="display:none;margin-top:10px;text-align:center">
                     <button class="btn btn-ghost" style="color:var(--orange);border-color:var(--orange)" onclick="CatDir.undo()">
                         &#8635; Desfazer ultima execucao (<span id="catDirUndoCount">0</span> produtos)
@@ -1119,19 +1328,22 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                 <div>
                     <strong>Explorador Firestore</strong>
-                    Consulta colecoes e documentos do Firestore em tempo real.
-                    Use o <em>Rapido</em> para buscar um caminho simples (ex: <code style="font-size:.8rem;background:#e0e7ff;padding:1px 5px;border-radius:3px">estabelecimentos/ID/Products</code>).
-                    Use o <em>Avancado</em> para filtros, ordenacao e busca por campos especificos.
+                    Consulta coleções e documentos do Firestore em tempo real, sem precisar acessar o console do Firebase.<br>
+                    <strong>Rápido:</strong> informe um caminho direto (ex: <code style="font-size:.8rem;background:#e0e7ff;padding:1px 5px;border-radius:3px">estabelecimentos/ID/Products</code>) e defina o número máximo de documentos retornados.<br>
+                    <strong>Avançado:</strong> mesmo que o Rápido, mas com sugestões automáticas de caminho conforme você digita, cache de resultados e log de execução.
                 </div>
             </div>
             <div class="subtabs">
-                <button class="stab active" onclick="switchSub('simple')">Rapido</button>
-                <button class="stab" onclick="switchSub('advanced')">Avancado</button>
+                <button class="stab active" onclick="switchSub('simple')">Rápido</button>
+                <button class="stab" onclick="switchSub('advanced')">Avançado</button>
             </div>
 
             <div class="spanel active" id="subtab-simple">
                 <div class="card">
-                    <div class="card-label">Explorador Rapido</div>
+                    <div class="card-label">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        Explorador Rápido
+                    </div>
                     <div class="row" style="margin-bottom:12px">
                         <div class="field"><label>Caminho</label><input type="text" id="sPath" placeholder="estabelecimentos/ID/Products" spellcheck="false"></div>
                         <div class="field sm"><label>Max</label><input type="number" id="sMax" value="5" min="1" max="50"></div>
@@ -1144,7 +1356,10 @@
 
             <div class="spanel" id="subtab-advanced">
                 <div class="card">
-                    <div class="card-label">Explorador Avancado</div>
+                    <div class="card-label">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                        Explorador Avançado
+                    </div>
                     <div class="row" style="margin-bottom:12px">
                         <div class="field field-rel"><label>Caminho</label><input type="text" id="aPath" placeholder="estabelecimentos/ID/Products" oninput="AExp.onInput()" spellcheck="false"><div class="sugg-drop" id="aSugg"></div></div>
                         <div class="field sm"><label>Max</label><input type="number" id="aMax" value="10" min="1" max="50"></div>
@@ -1153,13 +1368,22 @@
                     <div class="btn-group"><button class="btn btn-ghost" onclick="AExp.copy()">Copiar JSON</button><button class="btn btn-ghost" onclick="AExp.cache()">Ver Cache</button></div>
                 </div>
                 <div class="json-out" id="aResult">Os resultados aparecerao aqui...</div>
-                <div class="log-box" id="explorerLog" style="margin-top:12px"><div class="log-l info">Aguardando...</div></div>
+                <div class="log-wrap">
+                    <div class="log-header">
+                        <span class="log-title">Log de execução</span>
+                        <button class="log-clear" onclick="$('explorerLog').innerHTML=''">Limpar</button>
+                    </div>
+                    <div class="log-box" id="explorerLog"><div class="log-l info">Aguardando...</div></div>
+                </div>
             </div>
         </div>
         <!-- TAB: Settings -->
         <div class="tab-panel" id="tab-settings">
             <div class="card" style="margin-bottom:16px">
-                <div class="card-label">Credenciais de Acesso</div>
+                <div class="card-label">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    Credenciais de Acesso
+                </div>
                 <p style="font-size:.82rem;color:var(--text-secondary);margin-bottom:14px">
                     Altere o usuario e senha utilizados no login. Voce sera redirecionado para o login apos salvar.
                 </p>
@@ -1181,7 +1405,10 @@
             </div>
 
             <div class="card" style="margin-bottom:16px">
-                <div class="card-label">Chave API OpenAI</div>
+                <div class="card-label">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                    Chave API OpenAI
+                </div>
                 <p style="font-size:.82rem;color:var(--text-secondary);margin-bottom:14px">
                     Chave atual: <code id="settKeyPreview" style="font-family:var(--mono);font-size:.8rem;background:var(--surface-alt);padding:2px 6px;border-radius:4px">nao configurada</code>
                 </p>
@@ -1198,7 +1425,10 @@
             </div>
 
             <div class="card" style="margin-bottom:16px">
-                <div class="card-label">Tema</div>
+                <div class="card-label">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                    Tema
+                </div>
                 <div style="display:flex;align-items:center;gap:14px;margin-top:6px">
                     <label class="toggle-label" for="darkToggle" style="display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none">
                         <div style="position:relative;width:44px;height:24px">
@@ -1211,8 +1441,34 @@
                 </div>
             </div>
 
+            <div class="card" style="margin-bottom:16px">
+                <div class="card-label">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                    Estabelecimentos
+                </div>
+                <p style="font-size:.82rem;color:var(--text-secondary);margin-bottom:14px">
+                    Gerencie a lista de estabelecimentos disponíveis em todos os seletores do painel.
+                    Os estabelecimentos padrão não podem ser removidos.
+                </p>
+                <div id="estListSettings" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px"></div>
+                <div style="display:grid;gap:8px;max-width:400px">
+                    <div class="field">
+                        <label>ID do estabelecimento (Firestore)</label>
+                        <input type="text" id="newEstId" autocomplete="off" spellcheck="false" placeholder="ex: xYz9abc123">
+                    </div>
+                    <div class="field">
+                        <label>Nome exibido na lista</label>
+                        <input type="text" id="newEstName" autocomplete="off" spellcheck="false" placeholder="ex: Meu Supermercado">
+                    </div>
+                    <button class="btn btn-p" style="width:fit-content" onclick="Establishments.add()">Adicionar estabelecimento</button>
+                </div>
+            </div>
+
             <div class="card">
-                <div class="card-label">Sessao</div>
+                <div class="card-label">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    Sessão
+                </div>
                 <p style="font-size:.82rem;color:var(--text-secondary);margin-bottom:14px">
                     Encerra a sessao atual e redireciona para a tela de login.
                 </p>
@@ -1281,7 +1537,7 @@
     // === WebSocket ===
     function initWS() {
         socket = io(API);
-        socket.on('connect', () => { $('connBadge').className='conn-status conn-ok'; $('connBadge').textContent='Conectado'; });
+        socket.on('connect', () => { $('connBadge').className='conn-status conn-ok'; $('connBadge').textContent='Conectado'; _skelDone(); });
         socket.on('disconnect', () => { $('connBadge').className='conn-status conn-err'; $('connBadge').textContent='Desconectado'; });
         socket.on('renamer_log_update', d => addLog('renamerLog', d.message, d.level));
         socket.on('renamer_progress_update', d => Renamer.progress(d.progress, d.current_product));
@@ -1356,7 +1612,7 @@
             if(!estId) { toast('Selecione o estabelecimento','warning'); return; }
             const grid=$('catGrid'), btn=$('btnLoadCats');
             btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Carregando';
-            grid.innerHTML='<div class="placeholder">Buscando categorias...</div>';
+            grid.innerHTML='<div class="empty-state"><span class="spinner spinner-dark" style="width:22px;height:22px"></span><span>Buscando categorias...</span></div>';
             try {
                 const r = await (await fetch(API+'/api/renamer/categories?estabelecimento_id='+encodeURIComponent(estId))).json();
                 if(r.success && r.categories.length) {
@@ -1372,9 +1628,9 @@
                     });
                     this.updateCount();
                     toast(r.categories.length+' categorias carregadas','success');
-                } else { grid.innerHTML='<div class="placeholder">Nenhuma categoria encontrada</div>'; grid.className=''; }
-            } catch(e) { grid.innerHTML='<div class="placeholder">Erro: '+e.message+'</div>'; grid.className=''; toast('Erro ao carregar','error'); }
-            btn.disabled=false; btn.innerHTML='Carregar';
+                } else { grid.innerHTML='<div class="empty-state"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg><b>Nenhuma categoria encontrada</b><span>O estabelecimento não possui categorias cadastradas</span></div>'; grid.className=''; }
+            } catch(e) { grid.innerHTML='<div class="empty-state"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><b>Erro ao carregar</b><span>'+e.message+'</span></div>'; grid.className=''; toast('Erro ao carregar','error'); }
+            btn.disabled=false; btn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.8"/></svg> Carregar';
         },
 
         updateCount() {
@@ -1440,8 +1696,13 @@
 
         btnState() {
             const b=$('btnStart');
-            if(isRunning) { b.className='btn btn-d btn-w'; b.textContent='Parar'; }
-            else { b.className='btn btn-p btn-w'; b.textContent='Iniciar'; }
+            if(isRunning) {
+                b.className='btn btn-d btn-w';
+                b.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg> Parar';
+            } else {
+                b.className='btn btn-p btn-w';
+                b.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Iniciar';
+            }
         },
 
         async refreshUndo() {
@@ -1591,8 +1852,8 @@
         btnState(running) {
             this._running = running!=null ? running : this._running;
             const b=$('catBtn');
-            if(this._running){ b.className='btn btn-d'; b.textContent='Parar'; }
-            else { b.className='btn btn-p'; b.textContent='Iniciar Categorizacao'; }
+            if(this._running){ b.className='btn btn-d'; b.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg> Parar'; }
+            else { b.className='btn btn-p'; b.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Iniciar Categorização'; }
         },
 
         async refreshUndo() {
@@ -1615,9 +1876,12 @@
 
         async loadCategories() {
             const estId = getEstId('catEstSel','catEstCustom');
+            if(!estId){ toast('Selecione o estabelecimento','warning'); return; }
+            const btn = $('catLoadCatsBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Carregando';
             const sel = $('catFilterCategory');
-            sel.innerHTML = '<option value="">Todas as categorias</option>';
-            if(!estId) return;
+            sel.innerHTML = '<option value="">-- Todas as categorias --</option>';
             try {
                 const r = await (await fetch(API+'/api/categorizer/categories?estabelecimento_id='+encodeURIComponent(estId))).json();
                 if(r.categories) {
@@ -1627,8 +1891,20 @@
                         o.textContent = cat.name || cat;
                         sel.appendChild(o);
                     });
+                    toast(r.categories.length+' categorias carregadas','success');
                 }
-            } catch(e) {}
+            } catch(e) { toast('Erro ao carregar categorias','error'); }
+            btn.disabled = false;
+            btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.8"/></svg> Carregar Categorias';
+        },
+
+        onOnlyUncategorizedChange(checked) {
+            const btn = $('catLoadCatsBtn');
+            const sel = $('catFilterCategory');
+            btn.disabled = checked;
+            sel.disabled = checked;
+            sel.style.opacity = checked ? '.4' : '';
+            sel.style.cursor = checked ? 'not-allowed' : '';
         }
     };
 
@@ -1694,8 +1970,8 @@
         btnState(running) {
             this._running = running!=null ? running : this._running;
             const b=$('catDirBtn');
-            if(this._running){ b.className='btn btn-d'; b.textContent='Parar'; }
-            else { b.className='btn btn-p'; b.textContent='Iniciar Modo Dirigido'; }
+            if(this._running){ b.className='btn btn-d'; b.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg> Parar'; }
+            else { b.className='btn btn-p'; b.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Iniciar Modo Dirigido'; }
         },
 
         async refreshUndo() {
@@ -1727,43 +2003,49 @@
         {
             target: null,
             title: 'Bem-vindo ao Automações Mobile Mercado!',
-            text: 'Este painel tem 3 agentes de IA para gerenciar produtos do seu catálogo no Mobile Mercado. Faça um tour rápido para conhecer cada um.',
+            text: 'Painel com 3 agentes de IA para gerenciar o catálogo de produtos no Mobile Mercado. Selecione o estabelecimento, configure as opções e deixe a IA trabalhar.',
             tab: null, subtab: null
         },
         {
             target: '.tabs',
-            title: 'Navegação entre agentes',
-            text: 'Use estas abas para alternar entre os três agentes disponíveis.',
+            title: 'Navegação',
+            text: 'Use as abas para alternar entre o Padronizador de Nomes, o Explorador Firestore, o Categorizador de Produtos e as Configurações do painel.',
             tab: 'renamer', subtab: null
         },
         {
             target: '#tab-renamer',
             title: 'Padronizador de Nomes',
-            text: 'Usa IA para reescrever e padronizar os nomes dos produtos. Carregue as categorias, selecione quais deseja processar e clique em Iniciar.',
+            text: 'Reescreve e padroniza os nomes dos produtos usando IA. Selecione o estabelecimento, clique em Carregar para buscar as categorias, marque as que deseja processar e clique em Iniciar. Ative Modo de teste (Dry Run) para visualizar as alterações sem salvar no Firestore.',
             tab: 'renamer', subtab: null
         },
         {
             target: '#catsubtab-auto',
             title: 'Categorizador Automático',
-            text: 'Define categoria e subcategoria para cada produto automaticamente — exceto Mercearia, que tem um modo dedicado.',
+            text: 'Define categoria e subcategoria para cada produto automaticamente. Use "Apenas produtos sem categoria" para processar só os não categorizados, ou "Carregar Categorias" para filtrar por uma categoria específica. Ative Modo de teste (Dry Run) para simular sem salvar.',
             tab: 'categorizer', subtab: 'auto'
         },
         {
             target: '#catsubtab-dirigido',
-            title: 'Modo Dirigido — Mercearia',
-            text: 'Você define a categoria alvo (ex: Mercearia) e a IA escolhe apenas a subcategoria correta para cada produto. Ideal para categorizar Mercearia separadamente.',
+            title: 'Categorizador Dirigido',
+            text: 'Você escolhe a categoria alvo e a IA define a subcategoria correta. Ideal para categorizar uma categoria específica com mais controle. Ative "Avaliar outros produtos" para que a IA mova produtos de outras categorias quando fizer sentido.',
             tab: 'categorizer', subtab: 'dirigido'
         },
         {
-            target: '.daily-counter',
-            title: 'Contador Diário de Uso',
-            text: 'Acompanhe aqui o total de tokens e o custo em dólares gastos hoje em todas as chamadas de IA, em tempo real.',
+            target: '#tab-explorer',
+            title: 'Explorador Firestore',
+            text: 'Consulte coleções e documentos do Firestore sem precisar acessar o console do Firebase. O modo Rápido busca por caminho direto; o Avançado oferece sugestões automáticas e cache de resultados.',
+            tab: 'explorer', subtab: null
+        },
+        {
+            target: '.app-header',
+            title: 'Cabeçalho e Relatório',
+            text: 'O badge mostra o status da conexão em tempo real. O contador exibe tokens e custo de todas as chamadas de IA do dia. Clique em Relatório para acessar o histórico completo de execuções.',
             tab: null, subtab: null
         },
         {
             target: null,
-            title: 'Tudo pronto! 🎉',
-            text: 'Você já conhece o painel. Sempre que precisar de mais detalhes sobre algum agente, clique no botão ? para ver as instruções de uso.',
+            title: 'Tudo pronto!',
+            text: 'Você já conhece o painel. Clique no botão ? em qualquer agente para rever as instruções de uso. Nas Configurações você gerencia estabelecimentos, credenciais, chave de API e tema.',
             tab: null, subtab: null, isLast: true
         }
     ];
@@ -1885,6 +2167,143 @@
         }
     };
 
+    // === Skeleton ===
+    let _skelPending = 2; // aguarda: Settings.load (tema Firestore) + socket connect
+    let _skelHidden = false;
+    function _skelDone() {
+        if (--_skelPending <= 0) _hideSkel();
+    }
+    function _hideSkel() {
+        if (_skelHidden) return;
+        _skelHidden = true;
+        _skelPending = 0;
+        const s = document.getElementById('appSkeleton');
+        if (!s) return;
+        s.classList.add('sk-hide');
+        setTimeout(() => { if (s.parentNode) s.remove(); }, 380);
+        // Inicia tour após o conteúdo ser visível
+        if (!localStorage.getItem(TOUR_KEY)) Tour.start();
+    }
+
+    // === Establishments ===
+    const Establishments = {
+        _list: [],
+
+        async load() {
+            try {
+                const r = await fetch(API + '/api/settings/estabelecimentos');
+                const d = await r.json();
+                if (d.success) {
+                    this._list = d.estabelecimentos;
+                    this._populate();
+                    this._renderList();
+                }
+            } catch(e) {
+                // Fallback: popula com os padrões para não deixar os selects vazios
+                this._list = [
+                    {id: 'estabelecimento-teste', name: 'Estabelecimento Teste', default: true},
+                    {id: 'jQQjHTCc2zW1tuZMQzGF', name: 'Zero Grau', default: true},
+                ];
+                this._populate();
+            } finally {
+                // establishments não bloqueia o skeleton
+            }
+        },
+
+        async _reload() {
+            try {
+                const r = await fetch(API + '/api/settings/estabelecimentos');
+                const d = await r.json();
+                if (d.success) {
+                    this._list = d.estabelecimentos;
+                    this._populate();
+                    this._renderList();
+                }
+            } catch(e) {}
+        },
+
+        _populate() {
+            const SEL_IDS = ['renEstSel', 'catEstSel', 'catDirEstSel'];
+            SEL_IDS.forEach(selId => {
+                const sel = document.getElementById(selId);
+                if (!sel) return;
+                const prev = sel.value;
+                sel.innerHTML = '';
+                this._list.forEach(e => {
+                    const opt = document.createElement('option');
+                    opt.value = e.id;
+                    opt.textContent = e.name;
+                    sel.appendChild(opt);
+                });
+                const customOpt = document.createElement('option');
+                customOpt.value = '__custom__';
+                customOpt.textContent = 'Personalizado...';
+                sel.appendChild(customOpt);
+                // Restaura seleção anterior se ainda existir
+                if (prev && [...sel.options].some(o => o.value === prev)) {
+                    sel.value = prev;
+                }
+            });
+        },
+
+        _renderList() {
+            const el = document.getElementById('estListSettings');
+            if (!el) return;
+            if (!this._list.length) {
+                el.innerHTML = '<div style="color:var(--muted);font-size:.82rem">Nenhum estabelecimento cadastrado.</div>';
+                return;
+            }
+            el.innerHTML = this._list.map(e => {
+                const nameH = e.name.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+                const idH   = e.id.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+                return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius)">
+                    <div style="overflow:hidden">
+                        <span style="font-size:.84rem;font-weight:600;color:var(--text)">${nameH}</span>
+                        <span style="font-size:.73rem;color:var(--muted);margin-left:8px;font-family:var(--mono);word-break:break-all">${idH}</span>
+                        ${e.default ? '<span style="font-size:.68rem;background:var(--accent-light);color:var(--accent);padding:1px 7px;border-radius:9px;margin-left:6px;font-weight:600;white-space:nowrap">Padrão</span>' : ''}
+                    </div>
+                    ${!e.default ? `<button onclick="Establishments.remove('${idH}')" title="Remover" style="flex-shrink:0;background:none;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;color:var(--red);font-size:.8rem;padding:3px 8px;white-space:nowrap;transition:background .15s" onmouseover="this.style.background='var(--red-light)'" onmouseout="this.style.background='none'">Remover</button>` : ''}
+                </div>`;
+            }).join('');
+        },
+
+        async add() {
+            const id   = ($('newEstId').value || '').trim();
+            const name = ($('newEstName').value || '').trim();
+            if (!id || !name) { toast('Preencha o ID e o nome', 'warning'); return; }
+            try {
+                const r = await fetch(API + '/api/settings/estabelecimentos', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({id, name})
+                });
+                const d = await r.json();
+                if (d.success) {
+                    $('newEstId').value = '';
+                    $('newEstName').value = '';
+                    toast('Estabelecimento adicionado', 'success');
+                    await this._reload();
+                } else {
+                    toast(d.error || 'Erro ao adicionar', 'error');
+                }
+            } catch(e) { toast('Erro de conexao', 'error'); }
+        },
+
+        async remove(id) {
+            if (!confirm('Remover "' + id + '" da lista?')) return;
+            try {
+                const r = await fetch(API + '/api/settings/estabelecimentos/' + encodeURIComponent(id), {method: 'DELETE'});
+                const d = await r.json();
+                if (d.success) {
+                    toast('Estabelecimento removido', 'success');
+                    await this._reload();
+                } else {
+                    toast(d.error || 'Erro ao remover', 'error');
+                }
+            } catch(e) { toast('Erro de conexao', 'error'); }
+        },
+    };
+
     // === Settings ===
     const Settings = {
         initTheme() {
@@ -1931,7 +2350,10 @@
                     if (cb) cb.checked = serverDark;
                     localStorage.setItem('theme', serverDark ? 'dark' : 'light');
                 }
-            } catch(e) {}
+            } catch(e) {
+            } finally {
+                _skelDone();
+            }
         },
         toggleKeyVisibility() {
             const inp = $('settApiKey');
@@ -1984,14 +2406,16 @@
     };
 
     document.addEventListener('DOMContentLoaded', () => {
-        Settings.initTheme();
+        Settings.initTheme();  // aplica tema via localStorage (sem piscar)
         initWS();
         fetch(API+'/api/stats/daily').then(r=>r.json()).then(d=>{ if(d.today) updateDailyStats(d.today); }).catch(()=>{});
         Renamer.loadPrompt();
         Cat.loadPrompt();
-        Cat.loadCategories();
-        Settings.load();
-        if (!localStorage.getItem(TOUR_KEY)) Tour.start();
+        // Skeleton some quando: Settings.load() (tema Firestore) + socket connect
+        Settings.load();        // _skelDone() chamado no finally
+        Establishments.load();  // carrega em paralelo, não bloqueia skeleton
+        // Segurança: se conexão ou Firestore demorar demais, remove skeleton após 5s
+        setTimeout(() => _hideSkel(), 5000);
     });
     </script>
 </body>

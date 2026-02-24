@@ -29,7 +29,8 @@
       "Bash(cmd.exe /c:*)",
       "Bash(powershell.exe -Command \"Get-ChildItem ''C:\\\\Users\\\\lucas\\\\Desktop\\\\mobile_mercado\\\\padronizador_mobile_mercado'' -Name\")",
       "WebFetch(domain:pypi.org)",
-      "Bash(powershell.exe -Command \"& ''C:\\\\Users\\\\lucas\\\\Desktop\\\\mobile_mercado\\\\padronizador_mobile_mercado\\\\venv\\\\Scripts\\\\pip.exe'' freeze 2>&1\")"
+      "Bash(powershell.exe -Command \"& ''C:\\\\Users\\\\lucas\\\\Desktop\\\\mobile_mercado\\\\padronizador_mobile_mercado\\\\venv\\\\Scripts\\\\pip.exe'' freeze 2>&1\")",
+      "Bash(python:*)"
     ]
   }
 }
