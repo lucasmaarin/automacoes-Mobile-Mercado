@@ -379,7 +379,8 @@ class ProductCategorizerAgent:
             self.log_message(f"Erro ao carregar subcategorias: {e}", "error")
             return []
 
-    def load_products(self, estabelecimento_id, only_uncategorized=False, filter_category_id=None):
+    def load_products(self, estabelecimento_id, only_uncategorized=False,
+                      filter_category_id=None, filter_subcategory_id=None):
         try:
             col_ref = (self.db.collection('estabelecimentos')
                        .document(estabelecimento_id)
@@ -394,12 +395,18 @@ class ProductCategorizerAgent:
                     continue
                 if filter_category_id and filter_category_id not in cats:
                     continue
+                if filter_subcategory_id:
+                    subs = data.get('subcategoriesIds') or []
+                    if filter_subcategory_id not in subs:
+                        continue
                 products.append({'id': doc.id, 'name': data['name']})
             filtro = []
             if only_uncategorized:
                 filtro.append('apenas sem categoria')
             if filter_category_id:
                 filtro.append(f'categoria={filter_category_id}')
+            if filter_subcategory_id:
+                filtro.append(f'subcategoria={filter_subcategory_id}')
             desc = f" ({', '.join(filtro)})" if filtro else ''
             self.log_message(f"Carregados {len(products)} produtos{desc}", "info")
             return products
@@ -611,7 +618,7 @@ class ProductCategorizerAgent:
         })
 
     def load_all_products_with_cats(self, estabelecimento_id):
-        """Carrega todos os produtos com id, name e categoriesIds."""
+        """Carrega todos os produtos com id, name, categoriesIds e subcategoriesIds."""
         try:
             col_ref = (self.db.collection('estabelecimentos')
                        .document(estabelecimento_id)
@@ -623,7 +630,8 @@ class ProductCategorizerAgent:
                     products.append({
                         'id': doc.id,
                         'name': data['name'],
-                        'categories_ids': data.get('categoriesIds', [])
+                        'categories_ids': data.get('categoriesIds', []),
+                        'subcategories_ids': data.get('subcategoriesIds', []),
                     })
             self.log_message_targeted(f"Carregados {len(products)} produtos", "info")
             return products
@@ -650,18 +658,75 @@ class ProductCategorizerAgent:
             return True, sub_id
         return False, None
 
+    def _should_assign_batch(self, product_names, category_name, target_subs):
+        """Verifica em batch se cada produto pertence à categoria. Retorna lista de (fits, sub_id)."""
+        subs_text = "\n".join(f"id={s['id']} | nome={s['name']}" for s in target_subs)
+        numbered = "\n".join(f"{i+1}. {name}" for i, name in enumerate(product_names))
+        prompt = (
+            f"Categoria em avaliacao: {category_name}\n\n"
+            f"Subcategorias disponiveis:\n{subs_text}\n\n"
+            f"Para cada produto abaixo, responda se pertence a '{category_name}'.\n"
+            f"Formato exato, uma linha por produto:\n"
+            f"N. SIM|id_subcategoria\n"
+            f"N. NAO\n\n"
+            f"Produtos:\n{numbered}"
+        )
+        results = [(False, None)] * len(product_names)
+        try:
+            raw = self._call_openai(prompt, max_tokens=40 * len(product_names))
+        except Exception as e:
+            self.log_message_targeted(f"Erro OpenAI no batch fase 2: {e}", "error")
+            return results
+        for line in raw.strip().split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                dot_idx = line.index('.')
+                n = int(line[:dot_idx].strip()) - 1
+                if n < 0 or n >= len(product_names):
+                    continue
+                rest = line[dot_idx + 1:].strip().upper()
+                if rest.startswith('SIM'):
+                    parts = rest.split('|', 1)
+                    sub_id_raw = parts[1].strip() if len(parts) > 1 else ''
+                    sub_id = self._best_match(sub_id_raw, target_subs)
+                    results[n] = (True, sub_id)
+                else:
+                    results[n] = (False, None)
+            except (ValueError, IndexError):
+                continue
+        return results
+
     def run_categorization_targeted(self, estabelecimento_id, target_category_id,
-                                     include_others=False, delay=0.5, dry_run=False):
+                                     include_others=False, delay=0.5, dry_run=False,
+                                     filter_subcategory_id=None):
         try:
             self.tokens_used = 0
             self.estimated_cost = 0
             categorizer_targeted_state['running'] = True
             categorizer_targeted_state['logs'] = []
+            categorizer_targeted_state['current_product'] = None
+            categorizer_targeted_state['progress'] = {
+                'total': 0, 'processed': 0, 'updated': 0,
+                'skipped': 0, 'errors': 0, 'tokens_used': 0, 'estimated_cost': 0.0
+            }
             with _undo_lock:
                 undo_store['categorizer_targeted'].clear()
+            try:
+                socketio.emit('categorizer_targeted_status_update', {
+                    'running': True,
+                    'progress': categorizer_targeted_state['progress'],
+                    'current_product': None,
+                })
+                socketio.emit('categorizer_targeted_logs_update', {'logs': []})
+            except Exception:
+                pass
 
             self.log_message_targeted(f"Iniciando modo dirigido: {estabelecimento_id}", "info")
             self.log_message_targeted(f"Categoria alvo: {target_category_id}", "info")
+            if filter_subcategory_id:
+                self.log_message_targeted(f"Filtro de subcategoria: {filter_subcategory_id}", "info")
             if include_others:
                 self.log_message_targeted("Opcao ativa: tambem avaliar produtos de outras categorias", "info")
             if dry_run:
@@ -671,6 +736,10 @@ class ProductCategorizerAgent:
             subcategories = self.load_subcategories(estabelecimento_id)
             cat_by_id = {c['id']: c for c in categories}
             sub_by_id = {s['id']: s for s in subcategories}
+
+            # Fallback: categoria/subcategoria "Outros" (IDs fixos)
+            outros_cat_id = 'outros'
+            outros_sub_id = 'outrosOutros'
 
             target_cat = cat_by_id.get(target_category_id)
             if not target_cat:
@@ -695,8 +764,12 @@ class ProductCategorizerAgent:
 
             # Fase 1: produtos que já têm a categoria alvo → só define subcategoria
             phase1 = [p for p in all_products if target_category_id in p.get('categories_ids', [])]
+            if filter_subcategory_id:
+                phase1 = [p for p in phase1 if filter_subcategory_id in p.get('subcategories_ids', [])]
             # Fase 2 (opcional): demais produtos → IA decide se pertencem à categoria
             phase2 = [p for p in all_products if target_category_id not in p.get('categories_ids', [])] if include_others else []
+            if filter_subcategory_id and phase2:
+                phase2 = [p for p in phase2 if filter_subcategory_id in p.get('subcategories_ids', [])]
 
             self.log_message_targeted(f"Fase 1 — ja em '{target_cat['name']}': {len(phase1)} produtos", "info")
             if include_others:
@@ -729,82 +802,102 @@ class ProductCategorizerAgent:
                 categorizer_targeted_state['progress']['estimated_cost'] = self.estimated_cost
                 self.update_progress_targeted()
 
-            # ── Fase 1: só subcategoria ──────────────────────────────────────
+            BATCH_SIZE = 20
+
+            # ── Fase 1: avalia produto contra TODAS as categorias (batch) ────
             if phase1:
-                self.log_message_targeted(f"=== Fase 1: definindo subcategorias ({len(phase1)} produtos, 8 paralelos) ===", "info")
-
-            def _phase1_one(args):
-                idx, product = args
-                if not categorizer_targeted_state['running']:
-                    return
-                pid, pname = product['id'], product['name']
-                self.update_progress_targeted({'id': pid, 'name': pname, 'index': idx, 'total': total})
-                self.log_message_targeted(f"[{idx}/{total}] {pname}", "info")
-
-                sub_prompt = (
-                    f"Produto: \"{pname}\"\n"
-                    f"Categoria: {target_category_id} ({target_cat['name']})\n\n"
-                    f"Subcategorias disponiveis:\n{subs_text}\n\n"
-                    f"Qual e o id da subcategoria mais adequada? Responda APENAS com o id exato."
+                batches_p1 = [phase1[s:s + BATCH_SIZE] for s in range(0, len(phase1), BATCH_SIZE)]
+                self.log_message_targeted(
+                    f"=== Fase 1: categorizando ({len(phase1)} produtos em lotes de {BATCH_SIZE}, 2 paralelos) ===", "info"
                 )
-                try:
-                    raw_sub = self._call_openai(sub_prompt, max_tokens=100)
-                    subcategory_id = self._best_match(raw_sub, target_subs)
-                except Exception as e:
-                    self.log_message_targeted(f"  Erro OpenAI: {e}", "error")
-                    with self._lock:
-                        _tick(False)
-                    return
 
-                subcategory_name = sub_by_id.get(subcategory_id, {}).get('name', subcategory_id)
-                self.log_message_targeted(f"  -> {target_cat['name']} / {subcategory_name}", "success")
-                ok = self.update_product_categories(pid, estabelecimento_id,
-                                                    target_category_id, subcategory_id,
-                                                    target_cat['name'], subcategory_name, dry_run,
-                                                    history_key='categorizer_targeted')
-                with self._lock:
-                    _tick(ok)
-
-            with ThreadPoolExecutor(max_workers=3) as executor:
-                list(executor.map(_phase1_one, enumerate(phase1, 1)))
-
-            # ── Fase 2: avalia se produto pertence à categoria ───────────────
-            if phase2 and categorizer_targeted_state['running']:
-                self.log_message_targeted(f"=== Fase 2: avaliando outros produtos ({len(phase2)}, 3 paralelos) ===", "info")
-
-            def _phase2_one(args):
-                idx, product = args
+            def _phase1_batch(args):
+                batch_start, batch = args
                 if not categorizer_targeted_state['running']:
                     return
-                pid, pname = product['id'], product['name']
-                self.update_progress_targeted({'id': pid, 'name': pname, 'index': idx, 'total': total})
-                self.log_message_targeted(f"[{idx}/{total}] {pname}", "info")
-
+                names = [p['name'] for p in batch]
+                self.update_progress_targeted({'id': batch[0]['id'], 'name': names[0], 'index': batch_start + 1, 'total': total})
                 try:
-                    fits, subcategory_id = self._should_assign_to_category(pname, target_cat['name'], target_subs)
+                    cat_results = self.get_categories_batch(names, categories, subcategories)
                 except Exception as e:
-                    self.log_message_targeted(f"  Erro OpenAI: {e}", "error")
+                    self.log_message_targeted(f"  Erro OpenAI no batch fase 1: {e}", "error")
                     with self._lock:
-                        _tick(False)
+                        for _ in batch:
+                            _tick(False)
                     return
-
-                if not fits:
-                    self.log_message_targeted(f"  -> Nao pertence a '{target_cat['name']}', ignorado", "info")
+                for j, (product, (category_id, subcategory_id)) in enumerate(zip(batch, cat_results)):
+                    if not categorizer_targeted_state['running']:
+                        return
+                    pid, pname = product['id'], product['name']
+                    i = batch_start + j + 1
+                    self.log_message_targeted(f"[{i}/{total}] {pname}", "info")
+                    if not category_id or not subcategory_id:
+                        if outros_cat_id:
+                            reason = "categoria nao identificada" if not category_id else "subcategoria nao encontrada para a categoria"
+                            self.log_message_targeted(f"  -> Outros / Outros ({reason})", "warning")
+                            category_id, subcategory_id = outros_cat_id, outros_sub_id
+                            cat_name, sub_name = 'Outros', 'Outros'
+                        else:
+                            self.log_message_targeted(f"  Erro: nao foi possivel categorizar {pid}", "error")
+                            with self._lock:
+                                _tick(False)
+                            continue
+                    else:
+                        cat_name = cat_by_id.get(category_id, {}).get('name', category_id)
+                        sub_name = sub_by_id.get(subcategory_id, {}).get('name', subcategory_id)
+                        if category_id != target_category_id:
+                            self.log_message_targeted(f"  -> Reatribuido: {cat_name} / {sub_name}", "info")
+                        else:
+                            self.log_message_targeted(f"  -> {cat_name} / {sub_name}", "success")
+                    ok = self.update_product_categories(pid, estabelecimento_id,
+                                                        category_id, subcategory_id,
+                                                        cat_name, sub_name, dry_run,
+                                                        history_key='categorizer_targeted')
                     with self._lock:
-                        _tick(None)
+                        _tick(ok)
+
+            if phase1:
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    list(executor.map(_phase1_batch, ((i * BATCH_SIZE, b) for i, b in enumerate(batches_p1))))
+
+            # ── Fase 2: avalia se produto pertence à categoria (batch) ────────
+            if phase2 and categorizer_targeted_state['running']:
+                batches_p2 = [phase2[s:s + BATCH_SIZE] for s in range(0, len(phase2), BATCH_SIZE)]
+                self.log_message_targeted(
+                    f"=== Fase 2: avaliando outros produtos ({len(phase2)} em lotes de {BATCH_SIZE}, 2 paralelos) ===", "info"
+                )
+
+            def _phase2_batch(args):
+                batch_start, batch = args
+                if not categorizer_targeted_state['running']:
                     return
+                p2_offset = len(phase1)
+                names = [p['name'] for p in batch]
+                self.update_progress_targeted({'id': batch[0]['id'], 'name': names[0], 'index': p2_offset + batch_start + 1, 'total': total})
+                fit_results = self._should_assign_batch(names, target_cat['name'], target_subs)
+                for j, (product, (fits, subcategory_id)) in enumerate(zip(batch, fit_results)):
+                    if not categorizer_targeted_state['running']:
+                        return
+                    pid, pname = product['id'], product['name']
+                    i = p2_offset + batch_start + j + 1
+                    self.log_message_targeted(f"[{i}/{total}] {pname}", "info")
+                    if not fits:
+                        self.log_message_targeted(f"  -> Nao pertence a '{target_cat['name']}', ignorado", "info")
+                        with self._lock:
+                            _tick(None)
+                    else:
+                        subcategory_name = sub_by_id.get(subcategory_id, {}).get('name', subcategory_id) if subcategory_id else ''
+                        self.log_message_targeted(f"  -> {target_cat['name']} / {subcategory_name}", "success")
+                        ok = self.update_product_categories(pid, estabelecimento_id,
+                                                            target_category_id, subcategory_id,
+                                                            target_cat['name'], subcategory_name, dry_run,
+                                                            history_key='categorizer_targeted')
+                        with self._lock:
+                            _tick(ok)
 
-                subcategory_name = sub_by_id.get(subcategory_id, {}).get('name', subcategory_id) if subcategory_id else ''
-                self.log_message_targeted(f"  -> {target_cat['name']} / {subcategory_name}", "success")
-                ok = self.update_product_categories(pid, estabelecimento_id,
-                                                    target_category_id, subcategory_id,
-                                                    target_cat['name'], subcategory_name, dry_run,
-                                                    history_key='categorizer_targeted')
-                with self._lock:
-                    _tick(ok)
-
-            with ThreadPoolExecutor(max_workers=3) as executor:
-                list(executor.map(_phase2_one, enumerate(phase2, len(phase1) + 1)))
+            if phase2 and categorizer_targeted_state['running']:
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    list(executor.map(_phase2_batch, ((i * BATCH_SIZE, b) for i, b in enumerate(batches_p2))))
 
             prog = categorizer_targeted_state['progress']
             self.log_message_targeted("=== RESULTADO ===", "info")
@@ -826,14 +919,29 @@ class ProductCategorizerAgent:
             return False
 
     def run_categorization(self, estabelecimento_id, delay_between_products=0.5, dry_run=False,
-                           only_uncategorized=False, filter_category_id=None):
+                           only_uncategorized=False, filter_category_id=None,
+                           include_mercearia=False, filter_subcategory_id=None):
         try:
             self.tokens_used = 0
             self.estimated_cost = 0
             categorizer_state['running'] = True
             categorizer_state['logs'] = []
+            categorizer_state['current_product'] = None
+            categorizer_state['progress'] = {
+                'total': 0, 'processed': 0, 'updated': 0,
+                'errors': 0, 'tokens_used': 0, 'estimated_cost': 0.0
+            }
             with _undo_lock:
                 undo_store['categorizer'].clear()
+            try:
+                socketio.emit('categorizer_status_update', {
+                    'running': True,
+                    'progress': categorizer_state['progress'],
+                    'current_product': None,
+                })
+                socketio.emit('categorizer_logs_update', {'logs': []})
+            except Exception:
+                pass
 
             self.log_message(f"Iniciando categorizacao para: {estabelecimento_id}", "info")
             if dry_run:
@@ -845,13 +953,15 @@ class ProductCategorizerAgent:
                 categorizer_state['running'] = False
                 return False
 
-            # Exclui mercearia do modo automatico (gerenciada pelo Modo Dirigido)
-            categories = [c for c in categories if c['id'].lower() != 'mercearia']
+            if not include_mercearia:
+                categories = [c for c in categories if c['id'].lower() != 'mercearia']
             if not categories:
-                self.log_message("Nenhuma categoria disponivel apos remover mercearia", "warning")
+                self.log_message("Nenhuma categoria disponivel", "warning")
                 categorizer_state['running'] = False
                 return False
-            self.log_message(f"Categorias disponiveis (excluindo mercearia): {[c['id'] for c in categories]}", "info")
+            self.log_message(f"Categorias: {[c['id'] for c in categories]}", "info")
+            if filter_subcategory_id:
+                self.log_message(f"Filtro de subcategoria: {filter_subcategory_id}", "info")
 
             subcategories = self.load_subcategories(estabelecimento_id)
             if not subcategories:
@@ -859,7 +969,8 @@ class ProductCategorizerAgent:
                 categorizer_state['running'] = False
                 return False
 
-            products = self.load_products(estabelecimento_id, only_uncategorized, filter_category_id)
+            products = self.load_products(estabelecimento_id, only_uncategorized,
+                                          filter_category_id, filter_subcategory_id)
             if not products:
                 self.log_message("Nenhum produto encontrado com os filtros aplicados", "warning")
                 categorizer_state['running'] = False
@@ -867,6 +978,10 @@ class ProductCategorizerAgent:
 
             cat_by_id = {c['id']: c for c in categories}
             sub_by_id = {s['id']: s for s in subcategories}
+
+            # Fallback: categoria/subcategoria "Outros" (IDs fixos)
+            outros_cat_id = 'outros'
+            outros_sub_id = 'outrosOutros'
 
             total = len(products)
             categorizer_state['progress'] = {
@@ -895,12 +1010,25 @@ class ProductCategorizerAgent:
                     i = batch_start + j + 1
                     self.log_message(f"[{i}/{total}] {pname}", "info")
                     with self._lock:
-                        if not category_id:
-                            self.log_message(f"  Erro: nao foi possivel categorizar {pid}", "error")
-                            categorizer_state['progress']['errors'] += 1
+                        if not category_id or not subcategory_id:
+                            if outros_cat_id:
+                                reason = "categoria nao identificada" if not category_id else "subcategoria nao encontrada para a categoria"
+                                self.log_message(f"  -> Outros / Outros ({reason})", "warning")
+                                ok = self.update_product_categories(
+                                    pid, estabelecimento_id,
+                                    outros_cat_id, outros_sub_id,
+                                    'Outros', 'Outros', dry_run
+                                )
+                                if ok:
+                                    categorizer_state['progress']['updated'] += 1
+                                else:
+                                    categorizer_state['progress']['errors'] += 1
+                            else:
+                                self.log_message(f"  Erro: nao foi possivel categorizar {pid}", "error")
+                                categorizer_state['progress']['errors'] += 1
                         else:
                             category_name = cat_by_id.get(category_id, {}).get('name', category_id)
-                            subcategory_name = sub_by_id.get(subcategory_id, {}).get('name', subcategory_id) if subcategory_id else ''
+                            subcategory_name = sub_by_id.get(subcategory_id, {}).get('name', subcategory_id)
                             self.log_message(f"  -> {category_name} / {subcategory_name}", "success")
                             ok = self.update_product_categories(
                                 pid, estabelecimento_id,
@@ -1389,13 +1517,14 @@ def start_automation():
         dry_run = data.get('dry_run', False)
         categories = data.get('categories', [])
         custom_prompt = data.get('custom_prompt', '').strip() or None
+        filter_subcategory_id = data.get('filter_subcategory_id', '').strip() or None
 
         if not categories:
             return jsonify({'error': 'Selecione ao menos uma categoria'}), 400
 
 
         def run_thread():
-            automator.run_automation(estabelecimento_id, categories, delay, dry_run, custom_prompt)
+            automator.run_automation(estabelecimento_id, categories, delay, dry_run, custom_prompt, filter_subcategory_id)
 
         thread = Thread(target=run_thread)
         thread.daemon = True
@@ -1644,6 +1773,8 @@ def start_categorization():
     dry_run = bool(data.get('dry_run', False))
     only_uncategorized = bool(data.get('only_uncategorized', False))
     filter_category_id = data.get('filter_category_id', '').strip() or None
+    filter_subcategory_id = data.get('filter_subcategory_id', '').strip() or None
+    include_mercearia = bool(data.get('include_mercearia', False))
     custom_prompt = data.get('custom_prompt', '').strip() or None
 
     # Sobrescreve o prompt apenas para esta execucao (restaura ao final)
@@ -1656,7 +1787,9 @@ def start_categorization():
             categorizer.run_categorization(
                 estabelecimento_id, delay, dry_run,
                 only_uncategorized=only_uncategorized,
-                filter_category_id=filter_category_id
+                filter_category_id=filter_category_id,
+                include_mercearia=include_mercearia,
+                filter_subcategory_id=filter_subcategory_id,
             )
         finally:
             if custom_prompt:
@@ -1766,6 +1899,21 @@ def get_categorizer_categories():
     return jsonify({'success': True, 'categories': cats})
 
 
+@app.route('/api/subcategories', methods=['GET'])
+def get_subcategories():
+    global categorizer
+    if not categorizer:
+        return jsonify({'error': 'Categorizador nao inicializado'}), 500
+    estabelecimento_id = request.args.get('estabelecimento_id', '').strip()
+    if not estabelecimento_id:
+        return jsonify({'error': 'estabelecimento_id e obrigatorio'}), 400
+    category_id = request.args.get('category_id', '').strip() or None
+    subs = categorizer.load_subcategories(estabelecimento_id)
+    if category_id:
+        subs = [s for s in subs if s.get('categoryId') == category_id]
+    return jsonify({'success': True, 'subcategories': subs})
+
+
 # ============================================================
 # Rotas: Categorizador Dirigido
 # ============================================================
@@ -1784,9 +1932,10 @@ def start_categorization_targeted():
     include_others = bool(data.get('include_others', False))
     delay = float(data.get('delay', 0.5))
     dry_run = bool(data.get('dry_run', False))
+    filter_subcategory_id = data.get('filter_subcategory_id', '').strip() or None
 
     def run():
-        categorizer.run_categorization_targeted(est_id, target_cat_id, include_others, delay, dry_run)
+        categorizer.run_categorization_targeted(est_id, target_cat_id, include_others, delay, dry_run, filter_subcategory_id)
 
     Thread(target=run, daemon=True).start()
     return jsonify({'success': True, 'message': 'Categorizacao dirigida iniciada'})
@@ -1827,6 +1976,29 @@ def daily_stats_api():
 # ============================================================
 @socketio.on('connect')
 def handle_connect():
+    # Se nao ha nada rodando, zera os estados para a pagina iniciar limpa
+    if not automation_state['running']:
+        automation_state['progress'] = {
+            'total': 0, 'processed': 0, 'updated': 0,
+            'unchanged': 0, 'errors': 0, 'tokens_used': 0, 'estimated_cost': 0.0
+        }
+        automation_state['current_product'] = None
+        automation_state['logs'] = []
+    if not categorizer_state['running']:
+        categorizer_state['progress'] = {
+            'total': 0, 'processed': 0, 'updated': 0,
+            'errors': 0, 'tokens_used': 0, 'estimated_cost': 0.0
+        }
+        categorizer_state['current_product'] = None
+        categorizer_state['logs'] = []
+    if not categorizer_targeted_state['running']:
+        categorizer_targeted_state['progress'] = {
+            'total': 0, 'processed': 0, 'updated': 0,
+            'skipped': 0, 'errors': 0, 'tokens_used': 0, 'estimated_cost': 0.0
+        }
+        categorizer_targeted_state['current_product'] = None
+        categorizer_targeted_state['logs'] = []
+
     emit('renamer_status_update', {
         'running': automation_state['running'],
         'progress': automation_state['progress'],

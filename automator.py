@@ -102,7 +102,8 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
             logger.error(f"Erro ao carregar categorias: {e}")
             return []
 
-    def get_products_from_firestore(self, estabelecimento_id: str, categories: List[str]) -> List[Dict]:
+    def get_products_from_firestore(self, estabelecimento_id: str, categories: List[str],
+                                     filter_subcategory_id: str = None) -> List[Dict]:
         try:
             col_ref = (self.db.collection('estabelecimentos')
                        .document(estabelecimento_id)
@@ -115,6 +116,10 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
                 if categories:
                     prod_cats = data.get('categoriesIds', [])
                     if not any(c in prod_cats for c in categories):
+                        continue
+                if filter_subcategory_id:
+                    prod_subs = data.get('subcategoriesIds', [])
+                    if filter_subcategory_id not in prod_subs:
                         continue
                 products.append({'id': doc.id, 'name': data['name']})
             return products
@@ -308,21 +313,38 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
             list(executor.map(_process_batch, ((i * BATCH_SIZE, b) for i, b in enumerate(batches))))
 
     def run_automation(self, estabelecimento_id: str, categories: List[str],
-                       delay: float = 1.0, dry_run: bool = False, custom_prompt: str = None):
+                       delay: float = 1.0, dry_run: bool = False, custom_prompt: str = None,
+                       filter_subcategory_id: str = None):
         try:
             self.tokens_used = 0
             self.estimated_cost = 0
             automation_state['running'] = True
             automation_state['logs'] = []
+            automation_state['current_product'] = None
+            automation_state['progress'] = {
+                'total': 0, 'processed': 0, 'updated': 0,
+                'unchanged': 0, 'errors': 0, 'tokens_used': 0, 'estimated_cost': 0.0
+            }
             with _undo_lock:
                 undo_store['renamer'].clear()
+            try:
+                socketio.emit('renamer_status_update', {
+                    'running': True,
+                    'progress': automation_state['progress'],
+                    'current_product': None,
+                })
+                socketio.emit('renamer_logs_update', {'logs': []})
+            except Exception:
+                pass
 
             self.log_message(f"Iniciando renomeação para: {estabelecimento_id}", "info")
             self.log_message(f"Categorias: {categories}", "info")
+            if filter_subcategory_id:
+                self.log_message(f"Filtro de subcategoria: {filter_subcategory_id}", "info")
             if dry_run:
                 self.log_message("MODO DRY RUN - Nenhuma atualização será feita", "warning")
 
-            products = self.get_products_from_firestore(estabelecimento_id, categories)
+            products = self.get_products_from_firestore(estabelecimento_id, categories, filter_subcategory_id)
             if not products:
                 self.log_message("Nenhum produto encontrado", "warning")
                 automation_state['running'] = False

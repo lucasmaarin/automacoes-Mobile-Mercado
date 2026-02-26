@@ -400,6 +400,12 @@
             animation: shimmer 2s infinite;
         }
         @keyframes shimmer { from{transform:translateX(-100%)} to{transform:translateX(100%)} }
+        .pbar-fill.loading, .prog-bar.loading {
+            width: 35% !important;
+            transition: none !important;
+            animation: bar-loading 1.4s ease-in-out infinite;
+        }
+        @keyframes bar-loading { 0%{transform:translateX(-200%)} 100%{transform:translateX(400%)} }
         .pbar-text { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:.75rem; font-weight:700; color:var(--text); }
         .stats-row {
             display: grid;
@@ -1077,6 +1083,22 @@
                 </div>
             </div>
 
+            <div class="card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                    <div class="card-label" style="margin-bottom:0">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10H3"/><path d="M21 6H3"/><path d="M21 14H3"/><path d="M21 18H3"/></svg>
+                        Subcategoria <span style="font-size:.75rem;font-weight:400;color:var(--muted)">(opcional)</span>
+                    </div>
+                    <button class="btn btn-p" id="renLoadSubcatsBtn" onclick="Renamer.loadSubcategories()" style="display:flex;align-items:center;gap:5px">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.8"/></svg>
+                        Carregar
+                    </button>
+                </div>
+                <select id="renSubcatSel" class="est-sel">
+                    <option value="">-- Todas as subcategorias --</option>
+                </select>
+            </div>
+
             <div class="prompt-section">
                 <div class="prompt-hdr" id="promptHdr" onclick="Renamer.togglePrompt()">
                     <span style="display:flex;align-items:center;gap:7px">
@@ -1130,13 +1152,7 @@
 
         <!-- TAB: Categorizador -->
         <div class="tab-panel" id="tab-categorizer">
-            <div class="subtabs" id="catSubTabs">
-                <button class="stab active" onclick="switchCatSub('auto')">Automático</button>
-                <button class="stab" onclick="switchCatSub('dirigido')">Dirigido</button>
-            </div>
-
-            <!-- SUB: Automatico -->
-            <div class="spanel active" id="catsubtab-auto">
+            <div id="catsubtab-auto">
                 <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
                     <span class="agent-help-btn" onclick="toggleHelp('catAutoHelp')" title="Como funciona?">?</span>
                 </div>
@@ -1176,6 +1192,11 @@
                             <span class="toggle-track"><span class="toggle-thumb"></span></span>
                             <span>Apenas produtos sem categoria</span>
                         </label>
+                        <label class="toggle-sw">
+                            <input type="checkbox" id="catIncludeMercearia">
+                            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                            <span>Incluir Mercearia</span>
+                        </label>
                     </div>
                     <div style="margin-top:10px" id="catCategoryFilter">
                         <label style="font-size:.84rem;color:var(--text-secondary);display:block;margin-bottom:6px">Filtrar por categoria (opcional)</label>
@@ -1183,8 +1204,20 @@
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.8"/></svg>
                             Carregar Categorias
                         </button>
-                        <select id="catFilterCategory" style="width:100%;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.84rem">
+                        <select id="catFilterCategory" style="width:100%;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.84rem" onchange="Cat.onCategoryChange()">
                             <option value="">-- Todas as categorias --</option>
+                        </select>
+                    </div>
+                    <div style="margin-top:8px">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                            <label style="font-size:.84rem;color:var(--text-secondary);margin-bottom:0">Filtrar por subcategoria (opcional)</label>
+                            <button class="btn btn-p" id="catLoadSubcatsBtn" onclick="Cat.loadSubcategories()" style="display:flex;align-items:center;gap:5px;padding:5px 10px;font-size:.8rem">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.8"/></svg>
+                                Carregar
+                            </button>
+                        </div>
+                        <select id="catSubcatSel" style="width:100%;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.84rem">
+                            <option value="">-- Todas as subcategorias --</option>
                         </select>
                     </div>
                 </div>
@@ -1241,100 +1274,6 @@
                 </div>
             </div>
 
-            <!-- SUB: Dirigido -->
-            <div class="spanel" id="catsubtab-dirigido">
-                <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
-                    <span class="agent-help-btn" onclick="toggleHelp('catDirHelp')" title="Como funciona?">?</span>
-                </div>
-                <div class="agent-info" id="catDirHelp">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    <div>
-                        <strong>Categorizador Dirigido</strong>
-                        Você escolhe a categoria alvo e a IA define a <em>subcategoria</em> correta para cada produto dessa categoria.<br>
-                        <strong>Fluxo:</strong> selecione o estabelecimento → <em>Carregar Categorias</em> → escolha a categoria alvo → clique em <em>Iniciar Modo Dirigido</em>.<br>
-                        <strong>Avaliar outros produtos:</strong> ative esse toggle para que a IA também analise produtos de outras categorias e os mova para a categoria alvo quando fizer sentido.<br>
-                        Ative <em>Modo de teste (Dry Run)</em> para simular sem salvar. Ao finalizar, um botão de desfazer permite reverter a execução.
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-label">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
-                        Configuração
-                    </div>
-                    <div class="row">
-                        <div class="field">
-                            <label>Estabelecimento</label>
-                            <select id="catDirEstSel" class="est-sel" onchange="handleEstChange('catDirEstSel','catDirEstCustom')">
-                                <option value="" disabled>Carregando...</option>
-                            </select>
-                            <input type="text" id="catDirEstCustom" class="est-custom" style="display:none" placeholder="ID personalizado" spellcheck="false">
-                        </div>
-                        <div class="field sm"><label>Delay (s)</label><input type="number" id="catDirDelay" value="0.5" min="0" max="10" step="0.1"></div>
-                    </div>
-
-                    <div class="field" style="margin-top:10px">
-                        <label style="margin-bottom:6px">Categoria Alvo</label>
-                        <button class="btn btn-p" style="width:100%;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:6px" onclick="CatDir.loadCategories()">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.8"/></svg>
-                            Carregar Categorias
-                        </button>
-                        <select id="catDirTarget" class="est-sel">
-                            <option value="">-- Carregue as categorias primeiro --</option>
-                        </select>
-                    </div>
-
-                    <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px">
-                        <label class="toggle-sw">
-                            <input type="checkbox" id="catDirIncludeOthers">
-                            <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                            <span>Avaliar outros produtos e atribuir categoria quando fizer sentido</span>
-                        </label>
-                        <label class="toggle-sw">
-                            <input type="checkbox" id="catDirDryRun">
-                            <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                            <span>Modo de teste (Dry Run)</span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="card" style="text-align:center">
-                    <button class="btn btn-p" id="catDirBtn" onclick="CatDir.toggle()" style="min-width:180px">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
-                        Iniciar Modo Dirigido
-                    </button>
-                </div>
-
-                <div class="card" id="catDirProgressCard" style="display:none">
-                    <div class="card-label">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-                        Progresso
-                    </div>
-                    <div class="prog-wrap"><div class="prog-bar" id="catDirProg" style="width:0%"></div></div>
-                    <div style="font-size:.8rem;color:var(--muted);margin-top:6px;text-align:center" id="catDirProgLabel">0 / 0</div>
-                    <div style="font-size:.78rem;color:var(--text-secondary);margin-top:6px;text-align:center" id="catDirCurrent"></div>
-                    <div class="stats-grid" style="margin-top:12px">
-                        <div class="stat"><div class="stat-v" id="catDirTotal">0</div><div class="stat-l">Total</div></div>
-                        <div class="stat"><div class="stat-v" id="catDirProc">0</div><div class="stat-l">Processados</div></div>
-                        <div class="stat"><div class="stat-v green" id="catDirUpd">0</div><div class="stat-l">Atualizados</div></div>
-                        <div class="stat"><div class="stat-v" id="catDirSkip">0</div><div class="stat-l">Ignorados</div></div>
-                        <div class="stat"><div class="stat-v red" id="catDirErr">0</div><div class="stat-l">Erros</div></div>
-                    </div>
-                    <div style="font-size:.78rem;color:var(--muted);margin-top:8px;text-align:right" id="catDirCost"></div>
-                </div>
-
-                <div class="log-wrap">
-                    <div class="log-header">
-                        <span class="log-title">Log de execução</span>
-                        <button class="log-clear" onclick="$('catDirLog').innerHTML=''">Limpar</button>
-                    </div>
-                    <div class="log-box" id="catDirLog"><div class="log-l info">Aguardando...</div></div>
-                </div>
-                <div id="catDirUndo" style="display:none;margin-top:10px;text-align:center">
-                    <button class="btn btn-ghost" style="color:var(--orange);border-color:var(--orange)" onclick="CatDir.undo()">
-                        &#8635; Desfazer ultima execucao (<span id="catDirUndoCount">0</span> produtos)
-                    </button>
-                </div>
-            </div>
         </div>
 
         <!-- TAB: Explorer -->
@@ -1569,11 +1508,7 @@
         document.querySelectorAll('#tab-explorer .spanel').forEach(p => p.classList.remove('active'));
         $('subtab-'+n).classList.add('active');
     }
-    function switchCatSub(n) {
-        document.querySelectorAll('#catSubTabs .stab').forEach((b,i) => b.classList.toggle('active', n==='auto'?i===0:i===1));
-        document.querySelectorAll('#tab-categorizer > .spanel').forEach(p => p.classList.remove('active'));
-        $('catsubtab-'+n).classList.add('active');
-    }
+    function switchCatSub(n) { /* modo dirigido removido */ }
 
     // === Help toggle ===
     function toggleHelp(id) {
@@ -1604,17 +1539,17 @@
         socket.on('renamer_log_update', d => addLog('renamerLog', d.message, d.level));
         socket.on('renamer_progress_update', d => Renamer.progress(d.progress, d.current_product));
         socket.on('renamer_status_update', d => { isRunning=d.running; Renamer.progress(d.progress, d.current_product); Renamer.btnState(); });
-        socket.on('renamer_logs_update', d => { if(d.logs?.length){ $('renamerLog').innerHTML=''; d.logs.forEach(l=>addLog('renamerLog',l.message,l.level)); }});
+        socket.on('renamer_logs_update', d => { $('renamerLog').innerHTML = d.logs?.length ? '' : '<div class="log-l info">Aguardando...</div>'; (d.logs||[]).forEach(l=>addLog('renamerLog',l.message,l.level)); });
         socket.on('explorer_log_update', d => addLog('explorerLog', d.message, d.level));
         socket.on('explorer_logs_update', d => { if(d.logs?.length){ $('explorerLog').innerHTML=''; d.logs.forEach(l=>addLog('explorerLog',l.message,l.level)); }});
         socket.on('categorizer_log_update', d => addLog('catLog', d.message, d.level));
         socket.on('categorizer_progress_update', d => Cat.progress(d.progress, d.current_product));
-        socket.on('categorizer_status_update', d => { Cat.progress(d.progress, d.current_product); Cat.btnState(d.running); });
-        socket.on('categorizer_logs_update', d => { if(d.logs?.length){ $('catLog').innerHTML=''; d.logs.forEach(l=>addLog('catLog',l.message,l.level)); }});
-        socket.on('categorizer_targeted_log_update', d => addLog('catDirLog', d.message, d.level));
-        socket.on('categorizer_targeted_progress_update', d => CatDir.progress(d.progress, d.current_product));
-        socket.on('categorizer_targeted_status_update', d => { CatDir.progress(d.progress, d.current_product); CatDir.btnState(d.running); });
-        socket.on('categorizer_targeted_logs_update', d => { if(d.logs?.length){ $('catDirLog').innerHTML=''; d.logs.forEach(l=>addLog('catDirLog',l.message,l.level)); }});
+        socket.on('categorizer_status_update', d => { Cat._running=d.running; Cat.progress(d.progress, d.current_product); Cat.btnState(d.running); });
+        socket.on('categorizer_logs_update', d => { $('catLog').innerHTML = d.logs?.length ? '' : '<div class="log-l info">Aguardando...</div>'; (d.logs||[]).forEach(l=>addLog('catLog',l.message,l.level)); });
+        socket.on('categorizer_targeted_log_update', () => {});
+        socket.on('categorizer_targeted_progress_update', () => {});
+        socket.on('categorizer_targeted_status_update', () => {});
+        socket.on('categorizer_targeted_logs_update', () => {});
         socket.on('daily_stats_update', d => updateDailyStats(d));
         socket.on('openai_quota_exceeded', d => {
             const banner = document.getElementById('quotaBanner');
@@ -1695,6 +1630,28 @@
             btn.disabled=false; btn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.8"/></svg> Carregar';
         },
 
+        async loadSubcategories() {
+            const estId = getEstId('renEstSel','renEstCustom');
+            if(!estId) { toast('Selecione o estabelecimento','warning'); return; }
+            const btn = $('renLoadSubcatsBtn'), sel = $('renSubcatSel');
+            btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Carregando';
+            try {
+                const r = await (await fetch(API+'/api/subcategories?estabelecimento_id='+encodeURIComponent(estId))).json();
+                if(r.success) {
+                    const prev = sel.value;
+                    sel.innerHTML = '<option value="">-- Todas as subcategorias --</option>';
+                    r.subcategories.forEach(s => {
+                        const o = document.createElement('option');
+                        o.value = s.id; o.textContent = s.name + (s.categoryId ? ' ('+s.categoryId+')' : '');
+                        sel.appendChild(o);
+                    });
+                    if(prev) sel.value = prev;
+                    toast(r.subcategories.length+' subcategorias carregadas','success');
+                } else toast(r.error||'Erro','error');
+            } catch(e) { toast('Erro: '+e.message,'error'); }
+            btn.disabled = false; btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.8"/></svg> Carregar';
+        },
+
         updateCount() {
             const n = document.querySelectorAll('.ccb:checked').length;
             const badge = $('catCount');
@@ -1725,8 +1682,10 @@
             const btn=$('btnStart');
             btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Iniciando...';
 
+            const filterSubcatId = $('renSubcatSel').value || null;
             const payload = { estabelecimento_id:estId, delay, dry_run:dryRun, categories:cats };
             if(prompt) payload.custom_prompt = prompt;
+            if(filterSubcatId) payload.filter_subcategory_id = filterSubcatId;
             try {
                 const r = await fetch(API+'/api/renamer/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
                 if(r.ok) { isRunning=true; $('progressArea').classList.add('active'); $('renamerLog').innerHTML=''; toast('Automacao iniciada'+(dryRun?' (Dry Run)':''),'success'); }
@@ -1744,15 +1703,25 @@
                 $('sErr').textContent=p.errors;
                 $('tokensVal').textContent=(p.tokens_used||0).toLocaleString();
                 $('costVal').textContent='$'+(p.estimated_cost||0).toFixed(4);
-                const pct = p.total>0 ? (p.processed/p.total)*100 : 0;
-                $('pbar').style.width=pct+'%';
-                $('ptext').textContent=Math.round(pct)+'%';
-                if(p.processed>0) $('progressArea').classList.add('active');
+                const loading = isRunning && p.total === 0;
+                if(loading) {
+                    $('pbar').classList.add('loading'); $('pbar').style.width='';
+                    $('ptext').textContent='Carregando...';
+                } else {
+                    $('pbar').classList.remove('loading');
+                    const pct = p.total>0 ? (p.processed/p.total)*100 : 0;
+                    $('pbar').style.width=pct+'%';
+                    $('ptext').textContent=Math.round(pct)+'%';
+                }
+                if(isRunning || p.total>0) $('progressArea').classList.add('active');
+                else $('progressArea').classList.remove('active');
                 if(p.processed>=p.total && p.total>0) this.refreshUndo();
             }
             if(cur) {
                 $('curInfo').innerHTML='<strong>'+cur.index+'/'+cur.total+'</strong> &mdash; <strong>ID:</strong> '+cur.id+'<br><strong>Original:</strong> '+cur.name+'<br><strong>Novo:</strong> '+(cur.improved_name||'processando...');
                 $('curItem').classList.add('show');
+            } else if(!isRunning) {
+                $('curItem').classList.remove('show');
             }
         },
 
@@ -1869,10 +1838,13 @@
             const delay = parseFloat($('catDelay').value)||0.5;
             const dryRun = $('catDryRun').checked;
             const onlyUncategorized = $('catOnlyUncategorized').checked;
-            const filterCategory = $('catFilterCategory').value.trim();
+            const includeMercearia = $('catIncludeMercearia').checked;
+            const filterCategory = $('catFilterCategory').value.trim() || null;
+            const filterSubcat = $('catSubcatSel').value || null;
             const prompt = $('catPromptTa').value.trim();
-            const payload = {estabelecimento_id:estId, delay, dry_run:dryRun, only_uncategorized:onlyUncategorized};
+            const payload = {estabelecimento_id:estId, delay, dry_run:dryRun, only_uncategorized:onlyUncategorized, include_mercearia:includeMercearia};
             if(filterCategory) payload.filter_category_id = filterCategory;
+            if(filterSubcat) payload.filter_subcategory_id = filterSubcat;
             if(prompt) payload.custom_prompt = prompt;
             try {
                 const r = await (await fetch(API+'/api/categorizer/start',{
@@ -1930,16 +1902,25 @@
 
         progress(prog, cur) {
             if(!prog) return;
-            const pct = prog.total>0 ? Math.round(prog.processed/prog.total*100) : 0;
-            $('catProg').style.width = pct+'%';
-            $('catProgLabel').textContent = `${prog.processed} / ${prog.total} (${pct}%)`;
+            const loading = this._running && prog.total === 0;
+            if(loading) {
+                $('catProg').classList.add('loading'); $('catProg').style.width='';
+                $('catProgLabel').textContent = 'Carregando dados...';
+            } else {
+                $('catProg').classList.remove('loading');
+                const pct = prog.total>0 ? Math.round(prog.processed/prog.total*100) : 0;
+                $('catProg').style.width = pct+'%';
+                $('catProgLabel').textContent = `${prog.processed} / ${prog.total} (${pct}%)`;
+            }
             $('catTotal').textContent = prog.total||0;
             $('catProc').textContent = prog.processed||0;
             $('catUpd').textContent = prog.updated||0;
             $('catErr').textContent = prog.errors||0;
             if(prog.estimated_cost!=null) $('catCost').textContent = `Tokens: ${(prog.tokens_used||0).toLocaleString()} | Custo: $${(prog.estimated_cost||0).toFixed(4)}`;
-            if(cur && cur.name){ $('catCurrent').textContent = `[${cur.index}/${cur.total}] ${cur.name}`; }
-            if(prog.total>0) $('catProgressCard').style.display='';
+            if(cur && cur.name) $('catCurrent').textContent = `[${cur.index}/${cur.total}] ${cur.name}`;
+            else if(!this._running) $('catCurrent').textContent = '';
+            if(this._running || prog.total>0) $('catProgressCard').style.display='';
+            else $('catProgressCard').style.display='none';
             if(prog.processed>=prog.total && prog.total>0){ this._running=false; this.btnState(false); this.refreshUndo(); }
         },
 
@@ -1986,10 +1967,40 @@
                         sel.appendChild(o);
                     });
                     toast(r.categories.length+' categorias carregadas','success');
+                    $('catSubcatSel').innerHTML = '<option value="">-- Todas as subcategorias --</option>';
                 }
             } catch(e) { toast('Erro ao carregar categorias','error'); }
             btn.disabled = false;
             btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.8"/></svg> Carregar Categorias';
+        },
+
+        onCategoryChange() {
+            $('catSubcatSel').innerHTML = '<option value="">-- Todas as subcategorias --</option>';
+        },
+
+        async loadSubcategories() {
+            const estId = getEstId('catEstSel','catEstCustom');
+            if(!estId){ toast('Selecione o estabelecimento','warning'); return; }
+            const catId = $('catFilterCategory').value || null;
+            const btn = $('catLoadSubcatsBtn'), sel = $('catSubcatSel');
+            btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+            try {
+                let url = API+'/api/subcategories?estabelecimento_id='+encodeURIComponent(estId);
+                if(catId) url += '&category_id='+encodeURIComponent(catId);
+                const r = await (await fetch(url)).json();
+                if(r.success) {
+                    const prev = sel.value;
+                    sel.innerHTML = '<option value="">-- Todas as subcategorias --</option>';
+                    r.subcategories.forEach(s => {
+                        const o = document.createElement('option');
+                        o.value = s.id; o.textContent = s.name;
+                        sel.appendChild(o);
+                    });
+                    if(prev) sel.value = prev;
+                    toast(r.subcategories.length+' subcategorias carregadas','success');
+                } else toast(r.error||'Erro','error');
+            } catch(e){ toast('Erro: '+e.message,'error'); }
+            btn.disabled = false; btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.8"/></svg> Carregar';
         },
 
         onOnlyUncategorizedChange(checked) {
@@ -1999,91 +2010,6 @@
             sel.disabled = checked;
             sel.style.opacity = checked ? '.4' : '';
             sel.style.cursor = checked ? 'not-allowed' : '';
-        }
-    };
-
-    // === Categorizador Dirigido ===
-    const CatDir = {
-        _running: false,
-
-        async loadCategories() {
-            const estId = getEstId('catDirEstSel','catDirEstCustom');
-            if(!estId){ toast('Selecione o estabelecimento','warning'); return; }
-            try {
-                const r = await (await fetch(API+'/api/categorizer/categories?estabelecimento_id='+encodeURIComponent(estId))).json();
-                if(!r.success){ toast(r.error||'Erro','error'); return; }
-                const cats = r.categories;
-                const sel = $('catDirTarget');
-                sel.innerHTML = '<option value="">-- Selecione a categoria alvo --</option>';
-                cats.forEach(c => { const o=document.createElement('option'); o.value=c.id; o.textContent=c.name+' ('+c.id+')'; sel.appendChild(o); });
-                toast(cats.length+' categorias carregadas','success');
-            } catch(e){ toast('Erro: '+e.message,'error'); }
-        },
-
-        async toggle() { this._running ? await this.stop() : await this.start(); },
-
-        async start() {
-            const estId = getEstId('catDirEstSel','catDirEstCustom');
-            const targetCatId = $('catDirTarget').value;
-            if(!estId){ toast('Selecione o estabelecimento','warning'); return; }
-            if(!targetCatId){ toast('Selecione a categoria alvo','warning'); return; }
-            const includeOthers = $('catDirIncludeOthers').checked;
-            const delay = parseFloat($('catDirDelay').value)||0.5;
-            const dryRun = $('catDirDryRun').checked;
-            try {
-                const r = await (await fetch(API+'/api/categorizer-targeted/start',{
-                    method:'POST', headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify({estabelecimento_id:estId, target_category_id:targetCatId, include_others:includeOthers, delay, dry_run:dryRun})
-                })).json();
-                if(r.success){ this._running=true; this.btnState(true); $('catDirProgressCard').style.display=''; $('catDirLog').innerHTML=''; toast('Modo dirigido iniciado','success'); }
-                else toast(r.error||'Erro ao iniciar','error');
-            } catch(e){ toast('Erro: '+e.message,'error'); }
-        },
-
-        async stop() {
-            try { await fetch(API+'/api/categorizer-targeted/stop',{method:'POST'}); this._running=false; this.btnState(false); toast('Interrompendo...','warning'); }
-            catch(e){ toast('Erro: '+e.message,'error'); }
-        },
-
-        progress(prog, cur) {
-            if(!prog) return;
-            const pct = prog.total>0 ? Math.round(prog.processed/prog.total*100) : 0;
-            $('catDirProg').style.width=pct+'%';
-            $('catDirProgLabel').textContent=prog.processed+' / '+prog.total+' ('+pct+'%)';
-            $('catDirTotal').textContent=prog.total||0;
-            $('catDirProc').textContent=prog.processed||0;
-            $('catDirUpd').textContent=prog.updated||0;
-            $('catDirSkip').textContent=prog.skipped||0;
-            $('catDirErr').textContent=prog.errors||0;
-            if(prog.estimated_cost!=null) $('catDirCost').textContent='Tokens: '+(prog.tokens_used||0).toLocaleString()+' | Custo: $'+(prog.estimated_cost||0).toFixed(4);
-            if(cur&&cur.name) $('catDirCurrent').textContent='['+cur.index+'/'+cur.total+'] '+cur.name;
-            if(prog.total>0) $('catDirProgressCard').style.display='';
-            if(prog.processed>=prog.total&&prog.total>0){ this._running=false; this.btnState(false); this.refreshUndo(); }
-        },
-
-        btnState(running) {
-            this._running = running!=null ? running : this._running;
-            const b=$('catDirBtn');
-            if(this._running){ b.className='btn btn-d'; b.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg> Parar'; }
-            else { b.className='btn btn-p'; b.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Iniciar Modo Dirigido'; }
-        },
-
-        async refreshUndo() {
-            try {
-                const r = await (await fetch(API+'/api/categorizer-targeted/undo-info')).json();
-                const d = $('catDirUndo');
-                if(r.available){ $('catDirUndoCount').textContent=r.count; d.style.display=''; }
-                else d.style.display='none';
-            } catch(e){}
-        },
-
-        async undo() {
-            if(!confirm('Desfazer todas as '+$('catDirUndoCount').textContent+' alteracoes de categoria da ultima execucao dirigida?')) return;
-            try {
-                const r = await (await fetch(API+'/api/categorizer-targeted/undo',{method:'POST'})).json();
-                if(r.success){ toast('Revertidos '+r.reverted+' produtos'+(r.errors?' ('+r.errors+' erros)':''),'success'); $('catDirUndo').style.display='none'; }
-                else toast('Erro: '+r.error,'error');
-            } catch(e){ toast('Erro: '+e.message,'error'); }
         }
     };
 
@@ -2114,15 +2040,9 @@
         },
         {
             target: '#catsubtab-auto',
-            title: 'Categorizador Automático',
-            text: 'Define categoria e subcategoria para cada produto automaticamente. Use "Apenas produtos sem categoria" para processar só os não categorizados, ou "Carregar Categorias" para filtrar por uma categoria específica. Ative Modo de teste (Dry Run) para simular sem salvar.',
-            tab: 'categorizer', subtab: 'auto'
-        },
-        {
-            target: '#catsubtab-dirigido',
-            title: 'Categorizador Dirigido',
-            text: 'Você escolhe a categoria alvo e a IA define a subcategoria correta. Ideal para categorizar uma categoria específica com mais controle. Ative "Avaliar outros produtos" para que a IA mova produtos de outras categorias quando fizer sentido.',
-            tab: 'categorizer', subtab: 'dirigido'
+            title: 'Categorizador',
+            text: 'Define categoria e subcategoria para cada produto automaticamente. Use "Apenas produtos sem categoria" para processar só os não categorizados, "Incluir Mercearia" para incluir essa categoria, ou "Carregar Categorias" para filtrar por uma categoria específica. Ative Modo de teste (Dry Run) para simular sem salvar.',
+            tab: 'categorizer', subtab: null
         },
         {
             target: '#tab-explorer',
