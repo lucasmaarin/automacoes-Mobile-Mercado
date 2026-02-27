@@ -15,17 +15,30 @@ class FirestoreProductAutomator:
         self.db = db_client
         self.tokens_used = 0
         self.estimated_cost = 0
-        self.input_token_cost  = 0.00015 / 1000
-        self.output_token_cost = 0.00060 / 1000
+        self.input_token_cost  = 0.0025 / 1000   # gpt-4o
+        self.output_token_cost = 0.01   / 1000   # gpt-4o
         self._lock = threading.Lock()
         self._prompt_suffix = "\n\nNome atual: {produto_nome}\n\nNome melhorado (diferente do original):"
-        self.default_prompt_template = """
-Voce e um especialista em nomenclatura de produtos para um aplicativo de supermercado.
+        self.default_prompt_template = """Voce e um especialista em nomenclatura de produtos para um aplicativo de supermercado.
 
 IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome original inalterado.
 
-... (prompt truncado no modulo para brevidade) ...
-"""
+REGRAS DE NOMENCLATURA:
+- Use Title Case (primeira letra de cada palavra em maiusculo), exceto artigos e preposicoes curtas.
+- Mantenha a marca no inicio do nome quando presente.
+- Expanda abreviacoes comuns: "c/" → "com", "s/" → "sem", "kg" → "kg", "ml" → "ml", "lt" → "L".
+- Inclua peso/volume quando presente no nome original (ex: 500g, 1L, 200ml).
+- Remova caracteres especiais desnecessarios, codigos internos e informacoes irrelevantes para o consumidor.
+- Nao repita a categoria no nome do produto.
+- Seja conciso: prefira nomes curtos e claros.
+- Corrija erros de ortografia e digitacao.
+
+MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambiguo):
+- Pingo D'Ouro → produto do tipo Salgadinho
+- Jubes Hipnose → produto do tipo Bala de Goma
+- Look → produto do tipo Biscoito Wafer
+- Todechini → produto do tipo Bolacha de Agua e Sal
+- Nugget Pasta → produto do tipo Graxa para Sapatos (qualquer cor: Preta, Marrom, Neutra, etc.)"""
         saved = self.load_prompt_from_firestore()
         self.prompt_template = saved if saved else self.default_prompt_template
 
@@ -103,7 +116,8 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
             return []
 
     def get_products_from_firestore(self, estabelecimento_id: str, categories: List[str],
-                                     filter_subcategory_id: str = None) -> List[Dict]:
+                                     filter_subcategory_id: str = None,
+                                     use_images: bool = False) -> List[Dict]:
         try:
             col_ref = (self.db.collection('estabelecimentos')
                        .document(estabelecimento_id)
@@ -121,7 +135,17 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
                     prod_subs = data.get('subcategoriesIds', [])
                     if filter_subcategory_id not in prod_subs:
                         continue
-                products.append({'id': doc.id, 'name': data['name']})
+                image_url = None
+                if use_images:
+                    imgs = data.get('images') or []
+                    if imgs and isinstance(imgs[0], dict):
+                        image_url = imgs[0].get('fileUrl')
+                products.append({
+                    'id': doc.id,
+                    'name': data['name'],
+                    'description': (data.get('description') or '').strip(),
+                    'image_url': image_url,
+                })
             return products
         except Exception as e:
             logger.error(f"Erro ao carregar produtos: {e}")
@@ -134,7 +158,7 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
         for attempt in range(max_retries):
             try:
                 response = openai_client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model="gpt-4o",
                     messages=[{"role": "user", "content": full_prompt}],
                     max_tokens=100,
                     temperature=0.3,
@@ -166,24 +190,36 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
             record_daily_usage(inp + out, call_cost)
         return response.choices[0].message.content.strip()
 
-    def get_improved_names_batch(self, product_names: List[str], custom_prompt: str = None) -> List[str]:
+    def get_improved_names_batch(self, product_names: List[str], custom_prompt: str = None,
+                                  image_urls: List[str] = None) -> List[str]:
         """Melhora N nomes em uma única chamada. Retorna lista de nomes melhorados na mesma ordem."""
         prompt = custom_prompt if custom_prompt else self.prompt_template
-        numbered = "\n".join(f"{i+1}. {name}" for i, name in enumerate(product_names))
-        full_prompt = (
+        header = (
             f"{prompt}\n\n"
             f"Melhore os nomes dos produtos abaixo. "
             f"Responda APENAS no formato exato, uma linha por produto:\n"
             f"N. nome_melhorado\n\n"
-            f"Produtos:\n{numbered}"
+            f"Produtos:"
         )
+        has_images = bool(image_urls and any(image_urls))
+        numbered = "\n".join(f"{i+1}. {name}" for i, name in enumerate(product_names))
+        text_only_content = f"{header}\n{numbered}"
+        if has_images:
+            content = [{"type": "text", "text": header}]
+            for i, (name, img_url) in enumerate(zip(product_names, image_urls or [])):
+                content.append({"type": "text", "text": f"\n{i+1}. {name}"})
+                if img_url:
+                    content.append({"type": "image_url", "image_url": {"url": img_url, "detail": "low"}})
+            msg_content = content
+        else:
+            msg_content = text_only_content
         results = list(product_names)  # fallback: mantém o original
         max_retries = 5
         for attempt in range(max_retries):
             try:
                 response = openai_client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": full_prompt}],
+                    model="gpt-4o",
+                    messages=[{"role": "user", "content": msg_content}],
                     max_tokens=60 * len(product_names),
                     temperature=0.3,
                 )
@@ -202,6 +238,13 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
                 if _is_quota_error(e):
                     self.log_message("ERRO: Créditos da API OpenAI esgotados.", "error")
                     emit_quota_exceeded()
+                    raise
+                err_str = str(e).lower()
+                if has_images and ('image' in err_str or 'downloading' in err_str or '400' in err_str):
+                    self.log_message(f"Erro ao processar imagens do batch, reprocessando sem imagens...", "warning")
+                    msg_content = text_only_content
+                    has_images = False
+                    continue
                 raise
             break
         if hasattr(response, 'usage') and response.usage:
@@ -235,16 +278,21 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
         return self.get_improved_product_name(product_name, custom_prompt)
 
     def update_product_in_firestore(self, product_id: str, estabelecimento_id: str,
-                                     new_name: str, old_name: str, dry_run: bool = False) -> bool:
+                                     new_name: str, old_name: str, dry_run: bool = False,
+                                     new_description: str = None) -> bool:
         if dry_run:
-            self.log_message(f"[DRY RUN] '{old_name}' → '{new_name}'", "warning")
+            desc_msg = f" + descrição='{new_description}'" if new_description is not None else ""
+            self.log_message(f"[DRY RUN] '{old_name}' → '{new_name}'{desc_msg}", "warning")
             return True
         try:
             doc_ref = (self.db.collection('estabelecimentos')
                        .document(estabelecimento_id)
                        .collection('Products')
                        .document(product_id))
-            doc_ref.update({'name': new_name})
+            update_data = {'name': new_name}
+            if new_description is not None:
+                update_data['description'] = new_description
+            doc_ref.update(update_data)
             with _undo_lock:
                 undo_store['renamer'].append({
                     'product_id': product_id,
@@ -258,7 +306,8 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
             return False
 
     def process_products_batch(self, products: List[Dict], estabelecimento_id: str,
-                                delay: float, dry_run: bool, custom_prompt: str):
+                                delay: float, dry_run: bool, custom_prompt: str,
+                                use_images: bool = False):
         total = len(products)
         BATCH_SIZE = 20
         batches = [products[s:s + BATCH_SIZE] for s in range(0, total, BATCH_SIZE)]
@@ -268,9 +317,10 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
             if not automation_state['running']:
                 return
             names = [p['name'] for p in batch]
+            image_urls = [p.get('image_url') for p in batch] if use_images else None
             self.update_progress({'id': batch[0]['id'], 'name': names[0], 'index': batch_start + 1, 'total': total})
             try:
-                new_names = self.get_improved_names_batch(names, custom_prompt)
+                new_names = self.get_improved_names_batch(names, custom_prompt, image_urls)
             except Exception as e:
                 self.log_message(f"  Erro OpenAI no batch: {e}", "error")
                 with self._lock:
@@ -288,7 +338,11 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
                 i = batch_start + j + 1
                 self.log_message(f"[{i}/{total}] {pname}", "info")
                 new_name = self.format_product_name(new_name)
-                if new_name == pname:
+                name_changed = new_name != pname
+                # Preenche description com o novo nome quando está vazia
+                needs_desc = not product.get('description', '')
+                new_description = new_name if needs_desc else None
+                if not name_changed and not needs_desc:
                     self.log_message(f"  -> Sem alteração", "info")
                     with self._lock:
                         automation_state['progress']['unchanged'] += 1
@@ -297,8 +351,12 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
                         automation_state['progress']['estimated_cost'] = self.estimated_cost
                     self.update_progress()
                 else:
-                    self.log_message(f"  -> '{pname}' => '{new_name}'", "success")
-                    ok = self.update_product_in_firestore(pid, estabelecimento_id, new_name, pname, dry_run)
+                    if name_changed:
+                        desc_suffix = " (+ descrição)" if needs_desc else ""
+                        self.log_message(f"  -> '{pname}' => '{new_name}'{desc_suffix}", "success")
+                    else:
+                        self.log_message(f"  -> Descrição preenchida: '{new_name}'", "success")
+                    ok = self.update_product_in_firestore(pid, estabelecimento_id, new_name, pname, dry_run, new_description)
                     with self._lock:
                         if ok:
                             automation_state['progress']['updated'] += 1
@@ -314,7 +372,7 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
 
     def run_automation(self, estabelecimento_id: str, categories: List[str],
                        delay: float = 1.0, dry_run: bool = False, custom_prompt: str = None,
-                       filter_subcategory_id: str = None):
+                       filter_subcategory_id: str = None, use_images: bool = False):
         try:
             self.tokens_used = 0
             self.estimated_cost = 0
@@ -344,7 +402,9 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
             if dry_run:
                 self.log_message("MODO DRY RUN - Nenhuma atualização será feita", "warning")
 
-            products = self.get_products_from_firestore(estabelecimento_id, categories, filter_subcategory_id)
+            if use_images:
+                self.log_message("Analise de imagens ativada", "info")
+            products = self.get_products_from_firestore(estabelecimento_id, categories, filter_subcategory_id, use_images)
             if not products:
                 self.log_message("Nenhum produto encontrado", "warning")
                 automation_state['running'] = False
@@ -359,7 +419,7 @@ IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome
             self.update_progress()
             self.log_message(f"Processando {total} produtos em lotes de 20 (2 paralelos)", "info")
 
-            self.process_products_batch(products, estabelecimento_id, delay, dry_run, custom_prompt)
+            self.process_products_batch(products, estabelecimento_id, delay, dry_run, custom_prompt, use_images)
 
             prog = automation_state['progress']
             self.log_message("=== RESULTADO ===", "info")

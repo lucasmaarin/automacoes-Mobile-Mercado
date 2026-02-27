@@ -9,6 +9,8 @@ import os
 import logging
 import time
 import json
+import urllib.request
+import urllib.error
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
 from threading import Thread
@@ -279,8 +281,436 @@ class FirestoreSimpleExplorer:
 from categorizer import ProductCategorizerAgent
 class ProductCategorizerAgent:
     DEFAULT_CAT_SYSTEM_PROMPT = (
-        "Voce e um especialista em categorizacao de produtos de supermercado. "
-        "Responda APENAS com o ID solicitado, sem explicacoes, sem pontuacao extra."
+        "Voce e um especialista em categorizacao de produtos de supermercado.\n"
+        "Responda APENAS com o ID solicitado, sem explicacoes, sem pontuacao extra.\n"
+        "\n"
+        "REGRAS POR CATEGORIA (use o ID mais especifico disponivel; use o residual apenas se nenhuma outra subcategoria couber):\n"
+        "\n"
+        "-- Churrasco --\n"
+        "pE6DrTcVmRX2LVRYmGEt (Carvao): carvao vegetal, carvao para churrasco.\n"
+        "9iCNMLNxGnBulq8PjSY3 (Pao de Alho): pao de alho para churrasco.\n"
+        "RaB8H9a93VNqjkFBIPmt (Kit para Churrasco): kits e acessorios para churrasco; EXCLUI tabacos e salgadinhos.\n"
+        "IpeCUT0kFZoMUuJugCdJ (Mais Itens): demais itens de churrasco (tempero, grelha, etc.).\n"
+        "\n"
+        "-- Biscoitos --\n"
+        "C3FCL5ditlkuMQnRKg3e (Agua e Sal): biscoito agua e sal.\n"
+        "nu3IlKHvf0QKSpdgcc1Y (Cream Cracker): biscoito cream cracker.\n"
+        "N1Eg9yvjpRjdCfpHIijM (Biscoitos Salgados): biscoitos e bolachas salgadas em geral.\n"
+        "HHiFHTgXg5m0tCkLj6jx (Cookies): cookies.\n"
+        "ItAcxBTHTFPS9d5KKowS (Amanteigados): biscoitos amanteigados.\n"
+        "DWlp9bzlMq2Dn5CcaWB1 (Rosquinhas): rosquinhas (acucar, coco, etc.).\n"
+        "PKqYem2bZaP5dA85qyJW (Biscoito de Maizena): biscoito de maizena.\n"
+        "t1mFcAUUCtXyLi3IqukF (Biscoito de Nata): biscoito de nata.\n"
+        "mIjFIdLZ0o1BK9W041B7 (Biscoito Doce): biscoitos doces genericos.\n"
+        "AGQ23NBd67Sz4XmioIcP (Casadinho de Goiabada): casadinho e biscoito recheado de goiabada.\n"
+        "0vqhZVGVFuOJw5L43V4d (Recheados): biscoitos recheados (exceto goiabada).\n"
+        "6IBhORgOheeDZHWtNdmh (Wafer): wafer (chocolate, morango, baunilha).\n"
+        "FZwgcpLd2YlICdXrUvfT (Biscoito de Polvilho): biscoito de polvilho.\n"
+        "Hgjl65ywn4ozif05hm9R (Biscoito de Queijo): biscoito de queijo.\n"
+        "ZHoNZzbqFwa8JeiPht5E (Torradas/Biscoitos): torradas empacotadas.\n"
+        "9MOiAXEqxjDAZBrpu38o (Mais Biscoitos): biscoitos nao classificados acima.\n"
+        "1dZRgGcyYYSKN2jZ1fkr (Variados): mistura de biscoitos variados em caixa.\n"
+        "\n"
+        "-- Acougue --\n"
+        "BQ1OJFaCDZWVP4ycUowe: carne bovina pertencente ao Acougue.\n"
+        "porco: carne suina pertencente ao Acougue.\n"
+        "JjaUG8sOOfsuA8R1JThf (Cortes de Primeira): file mignon, alcatra, picanha, contrafile.\n"
+        "yPwKScUgMIuUUCrAdEYl (Cortes de Segunda): coxao duro, paleta, lagarto, musculo.\n"
+        "5CviHJ3oI3SfEKQrx6SM (Linha Nobre): cortes especiais e nobres.\n"
+        "4VQoALxDtxtR1aI38PvJ (Aves/Acougue): frango, peru, pato inteiros ou em cortes frescos.\n"
+        "cortes_de_fran (Cortes de Frango/Acougue): cortes de frango frescos do acougue.\n"
+        "8rjpy4IacWLRWMJAL17V (Churrasco/Acougue): carnes preparadas para churrasco.\n"
+        "ELfFMvRP2HbfCeKVixrh (Linguicas e Salsichas/Acougue): linguica fresca e salsicha do acougue.\n"
+        "CMwgJ7ykB8grJ5BBZEdH (Defumados): carnes defumadas.\n"
+        "Dan8MaynJfKXcycV6LZ3 (Espetinhos): espetinhos prontos.\n"
+        "4rMPitDidGyGDg4FkuTb (Carnes de Sol): carne de sol, carne seca.\n"
+        "0pXbfFgvCsTIyZrVAPsK (Hamburgueres/Acougue): hamburgueres artesanais.\n"
+        "Yhddb08P7KeBirOaylzj (Embalados/Acougue): carnes embaladas no acougue.\n"
+        "a7wUqcx8HGLcnGayQDkq (Especiais/Acougue): cortes exclusivos.\n"
+        "exoticos (Exoticos): javali, cordeiro, pato, carnes exoticas.\n"
+        "salgados (Salgados/Acougue): salgados do acougue.\n"
+        "fUaGNueGsiBwCpBmEVfG (Mais Produtos/Acougue): residual do acougue.\n"
+        "\n"
+        "-- Abatedouro (categoria xNSx6EUWUnkwxXiy4jh0) --\n"
+        "KBpjomnzgqWLuh6w2DWD (Peito): peito de frango embalado.\n"
+        "QtHqgh24CxgX4AUgegeA (Coxa/Sobrecoxa): coxa e sobrecoxa.\n"
+        "8vGdQ6ENco3O4qfn9HhJ (Asa): asa, meio da asa, coxinha da asa.\n"
+        "BFHfuKpY6AGYWoDqX2HV (Files): file de frango.\n"
+        "3v5DBHWf3CiZx5r9SKtK (Frango Inteiro): frango inteiro ou desossado.\n"
+        "KfxJjJTowlZFTtARwcdh (Miudos): figado, coracao, moela.\n"
+        "aLtsjrCXgRk8MJuK47y4 (Linguica de Frango): linguica de frango.\n"
+        "xUAqzqnDcKprxgH1cOO8 (Mais Opcoes/Frango): demais itens de frango.\n"
+        "\n"
+        "-- Carnes Embaladas (categoria lZP2iBskINtpOVxncQtA) --\n"
+        "4NqSI0qdmgRdQOzHT7GF (Carne Bovina/Carnes): carne bovina embalada (resfriada).\n"
+        "LdYWFZqB5T7pTUlWJT6E (Carne Suina/Carnes): carne suina embalada.\n"
+        "DEVp6SpXQp1U5KQtoOCF (Aves Congeladas): aves e cortes de frango congelados embalados.\n"
+        "IHPgrxrloNfIlsv0sges (Linguica/Bacon): linguica embalada, bacon.\n"
+        "wCojj4BWTuvvdhxSki9g (Salsicha): salsichas embaladas.\n"
+        "aJmQ2OGi0Y6jlzerAl0L (Peixes/Frutos do Mar): peixes e frutos do mar embalados.\n"
+        "Y9ANg4xm2SOxm2BFFGKa (Embalados/Carnes): carnes embaladas em geral.\n"
+        "OVI7wwD4cYwHc9UiiXbM (Mais Produtos/Carnes): residual da categoria Carnes.\n"
+        "\n"
+        "-- Frios (categoria PcnQsRLfIHbfJju4Jt9y) --\n"
+        "7w3rDlaVhlDW5cBcKTxY (Presunto/Derivado): presunto, apresuntado, fiambre.\n"
+        "ukzn7WeMCizvaQF82QXZ (Mortadela/Salame): mortadela, salame, copa, pepperoni.\n"
+        "N9vYlXyUeyf6Q6PKOIlr (Mais Frios): frios nao classificados acima.\n"
+        "\n"
+        "-- Laticinios (categoria 93OpBNqbtNLreJOvysUF) --\n"
+        "57yxbAvuE7BGivr7VaAS (Leite/Laticinios): leite pasteurizado e longa vida na categoria Laticinios.\n"
+        "1VcbixYgCTG5GYM5kIae (Manteiga/Margarina): manteiga e margarina.\n"
+        "GqfVGeOoIbXMMV4OdU5k (Iogurte/Fermentado): iogurte, leite fermentado, bebida lactea.\n"
+        "IkvMHcBZprv1zkGkhtZm (Queijo/Requeijao): queijo e requeijao.\n"
+        "EsWJOMgJv5lHdX3haYfo (Achocolatados/Vitaminas): achocolatado liquido, vitamina de frutas.\n"
+        "EuTwLwweukGpqKrdHtPq (A Base de Soja): leite de soja, iogurte de soja.\n"
+        "qwG62CA7ZfmH9DrENyr9 (Mais Laticinios): laticinios nao classificados acima.\n"
+        "\n"
+        "-- Leite Longa Vida (categoria leite_longa_vida) --\n"
+        "leite_integral (Integral): leite longa vida integral.\n"
+        "desnatado (Desnatado): leite longa vida desnatado.\n"
+        "semi_desnatado (Semi-Desnatado): leite longa vida semi-desnatado.\n"
+        "zero_lactose (Zero Lactose): leite longa vida zero lactose.\n"
+        "\n"
+        "-- Naturais (categoria H4oUStBC1tKGbiONE0kq) --\n"
+        "9D3MkgeuDpikvdYEbGGl (Granola/Aveia): granola, aveia, muesli.\n"
+        "E2mNlZd1Xee5UP9UQOP7 (Linhaca): linhaca, chia e sementes similares.\n"
+        "F1ZJzNIoXqmVlT1g1y54 (Mel/Derivados): mel, geleia real.\n"
+        "ThSvDDUALYAr84vKR04B (Chas): cha em sache, ervas para cha.\n"
+        "5u1pTw1mMQ7NS3ThNzQ3 (Mais Produtos/Cafe da Manha): residual de cafe da manha.\n"
+        "\n"
+        "-- Bebidas --\n"
+        "0RdbVSpAFSRS6WFoPtpm (Cerveja Lata): cerveja em lata.\n"
+        "DbM2IzBT4WT2AfTw0QIp (Cerveja Garrafa): cerveja em garrafa.\n"
+        "3MoTA9b88ctB5C97nRBW (Refrigerantes): refrigerante em geral.\n"
+        "9vKWSLbeERw7ExTuu2ZF (Energeticos): energetico (Red Bull, Monster, etc.).\n"
+        "YsErdAMJliMjvS8P7PC7 (Agua/Agua de Coco): agua mineral e agua de coco na categoria Bebidas.\n"
+        "ZzhgJTpqtOJn98LApa2u (Sucos/Bebidas): suco em geral na categoria Bebidas.\n"
+        "Hxg4gAZ4CSnx454mL9l2 (Ice): bebida ice (smirnoff ice, etc.).\n"
+        "LLZ8y0OU1AASvrZWzVdL (Vinho Seco): vinho seco.\n"
+        "fSWULb0s25clpPGLNAcB (Vinhos): vinhos em geral.\n"
+        "vinhos (Vinho Suave): vinho suave.\n"
+        "udS91WZE3PfsBq6hAIdM (Espumantes): espumante, champagne, prosecco.\n"
+        "RHS9lkuqVHVBAIZjDxVK (Cachaca): cachaca.\n"
+        "C2ww9mrT9n52jiUXNtml (Vodka): vodka.\n"
+        "CDLwhAVDjsm861QQAZCv (Whisky): whisky, bourbon, scotch.\n"
+        "azQe5zSxbSvkCwwLUF0o (Destiladas): rum, gin, tequila, conhaque e outros destilados.\n"
+        "Q7sjFk6AZWN9NGAJf2fA (Mais Bebidas): bebidas nao cobertas acima.\n"
+        "\n"
+        "-- Sucos e Refrescos (categoria gRZ08KY5SYQs7DHjJBDJ) --\n"
+        "1xdmyCL5Uc2zpNO8mUfe (Refrigerante Lata): refrigerante em lata.\n"
+        "3KUV4f5NK1U5mYmznsUy (Refrigerante Garrafa): refrigerante em garrafa.\n"
+        "3eBLrMniIPDKsEgpb8sr (Suco Natural): suco natural/fresco.\n"
+        "6t2afejanIRpX0HlOPSY (Suco em Garrafa): suco industrializado em garrafa.\n"
+        "Qd9XnIcQd9pBVRP6iWV4 (Suco Caixa 1L): suco caixinha grande (1L).\n"
+        "ZFJGH6ZM1XpWnLj5AGZV (Suco Caixinha/Lata): suco caixinha pequena ou lata.\n"
+        "QmoYLCUcOVaUw5lHllYT (Suco em Po): refresco em po, suco em po.\n"
+        "cdFJ2KnWwiRj0V0eItkT (Agua de Coco/Sucos): agua de coco.\n"
+        "5qjH5NwzNIS2aur7k7Cn (Mais Refrescos): residual de sucos e refrescos.\n"
+        "\n"
+        "-- Hortifruti --\n"
+        "0ZoBFIwvInk1pjMHMCdF (Frutas/Hortifruti): frutas frescas.\n"
+        "legumes (Legumes): legumes e verduras.\n"
+        "V7xqQj7WI90HAZZ2cPCR (Ovos): ovos de galinha, codorna.\n"
+        "9OuZeU8qgrsKkWqP4WCG (Mercearia/Hortifruti): produtos hortifruti vendidos em mercearias.\n"
+        "qOMtvbXjGj0UhOAJpBSd (Mais Produtos/Hortifruti): residual de hortifruti.\n"
+        "\n"
+        "-- FLV --\n"
+        "frutas (FRUTAS/FLV): frutas frescas na categoria FLV.\n"
+        "verduras (VERDURAS): verduras, legumes, folhas.\n"
+        "\n"
+        "-- Congelados (categoria NJBuIlFYOgXmbMRbJFsh) --\n"
+        "Fc8TyAYuf2c5QXQ7Drxu (Sorvete/Acai): sorvete, gelato, acai congelado.\n"
+        "JwWF0RK2LHUIQ6cL3lOW (Pizza): pizza congelada.\n"
+        "LxE5hDZ63Tc8wVqc8RKs (Empanados): nuggets, frango empanado, iscas empanadas.\n"
+        "XOXp60TP8q15xyFdnxUW (Lasanha): lasanha congelada.\n"
+        "OqoBE2cz4IEHQSYjguOL (Salgadinhos/Congelados): coxinha, risole e salgadinhos congelados.\n"
+        "Us2ejjcjGBG2kF8ECnxS (Biscoito/Pao de Queijo/Congelados): pao de queijo congelado.\n"
+        "OTKghAfOKCHotE3Gi9s0 (Polpa de Frutas): polpa de fruta congelada.\n"
+        "FypWNxEpFgM1Z0hRU8p8 (Mais Congelados): residual de congelados.\n"
+        "\n"
+        "-- Pao Embalado (categoria Q7TlMRwK1DcXybCa44PY) --\n"
+        "J2udaMg64WGo2oqPrTbv (Pao de Forma): pao de forma fatiado, integral, multigraos.\n"
+        "vqDt622hqpkjhu98ydrD (Hot Dog/Hamburguer): pao de hot dog e hamburguer.\n"
+        "xjkzrS0aPPhoNcdYu17l (Bisnaguinhas): bisnaguinhas e paezinhos embalados.\n"
+        "UG910hCJRfuIWVzCno2V (Sovado/Empacotados): paes sovados empacotados variados.\n"
+        "F0KjJqgU6kKPjr8NHtTy (Mais Opcoes/Pao): demais paes embalados.\n"
+        "\n"
+        "-- Padaria --\n"
+        "KKLiLzWhutbHWSeBvFri (Pao Frances/Recheados): pao frances, pao recheado de padaria.\n"
+        "H23NaSRpvqNgGbTiJebM (Paozinho/Bisnaguinha): paozinhos e bisnaguinhas de padaria.\n"
+        "FRqjgVTQJrBKFd3eqfSt (Pao Doce/Recheados): pao doce recheado de padaria.\n"
+        "Mcoit0tmUtiCNtEh8ave (Paes/Padaria): paes variados de padaria.\n"
+        "CTsdjUJekDG24qEEdyJ6 (Bolos/Padaria): bolos e fatias de padaria.\n"
+        "B9BEsqtxrA45xgpAMbaH (Tortas): tortas salgadas e doces de padaria.\n"
+        "clT4W6NnfZKgNOtG3eMc (Confeitados): doces confeitados, brigadeiros, trufas de padaria.\n"
+        "hZlW6T7U0clTcpE4gof7 (Quitandas): quitandas, broa de milho, rosquinha de padaria.\n"
+        "toSETvgp1QV8pq9HvNSk (Sanduiches): sanduiches prontos da padaria.\n"
+        "GPKVDh11yYdK1VNKc8R1 (Chocolate/Padaria): chocolate artesanal de padaria.\n"
+        "Xx2Vhb6GMUzKQeKgeO38 (Cafe/Padaria): cafe, chas e bebidas quentes da padaria.\n"
+        "5yeL5rVv4NFOwGKeMmtT (Panettone): panettone.\n"
+        "HoFlKyoCKf9NbiryEPCy (Mercearia/Padaria): produtos de mercearia vendidos na padaria.\n"
+        "granel (Granel): produtos a granel da padaria.\n"
+        "padaria_industrial (Padaria Industrial): produtos industriais de padaria.\n"
+        "padaria_propria (Padaria Propria): producao propria da padaria.\n"
+        "8uDM53oTLlaHcqkel8d7 (Outros/Padaria): outros itens da padaria.\n"
+        "wXn0hCRIrLt7DBL7NLBy (Mais Produtos/Padaria): residual da padaria.\n"
+        "\n"
+        "-- Limpeza --\n"
+        "M6exV5BVLqP7eoBfC3cK (Sabao em Po): sabao em po, lava-roupas em po.\n"
+        "ar2fOpTDXdex3Lg7ATCa (Sabao em Barra/Liquido): sabao em barra e sabao liquido.\n"
+        "YXmkCv4Tb9AYgE4rYsMe (Amaciante): amaciante de roupas.\n"
+        "dJDOrXcowSIPamoMoMax (Alvejante): alvejante, agua sanitaria, cloro.\n"
+        "detergente (Detergente): detergente liquido para loucas.\n"
+        "QEoywjhiacithlmhnS9n (Desinfetante): desinfetante, lysoform.\n"
+        "S3jUzqBSEogWZBC1V8Ra (Cera): cera para piso.\n"
+        "UGM9Jd9tlMy0B6girwgX (Esponjas): esponja de limpeza.\n"
+        "Bksk4oPxyMYDYlQ9FEmQ (Odorizantes): odorizante de ambiente, aromatizador.\n"
+        "5TKMIrgVg5lLIW0aQX2E (Sanitarios): limpador sanitario, pedra sanitaria.\n"
+        "inseticidas (Inseticidas): inseticida, repelente, mata-moscas.\n"
+        "limpadores (Limpadores): limpador multiuso, limpador de cozinha.\n"
+        "produtos_gerais_p_casa (Produtos Gerais Casa): produtos de limpeza gerais para casa.\n"
+        "produtos_p_banheiro (Produtos para Banheiro): produtos especificos para banheiro.\n"
+        "produtos_p_cozinha (Produtos para Cozinha): produtos especificos para cozinha.\n"
+        "produtos_p_roupas (Produtos para Roupas): produtos para lavagem de roupas.\n"
+        "0YVuyGSVBGIkQxRodAFv (Mais Produtos/Limpeza): residual da categoria Limpeza.\n"
+        "\n"
+        "-- Higiene Pessoal (categorias higiene e perfumaria_higiene_pessoal) --\n"
+        "2aGCAlaIXyhuUFywWsQk (Shampoo): shampoo.\n"
+        "bmCb8wv1HpG1BwCZ8YRk (Condicionador): condicionador de cabelo.\n"
+        "DgbgvNS2t1XfbmQ2dU2e (Produtos para Cabelo): creme de pentear, finalizador, mascara capilar.\n"
+        "3gWmMs6iftlYwW8Z0eSl (Desodorante): desodorante e antitranspirante.\n"
+        "84XcSQ6ZUymV2DzUTuA9 (Creme Dental): creme dental e pasta de dente.\n"
+        "4rlHGNJz4s0Jo68B3vyL (Escovas de Dente): escova de dente.\n"
+        "ZcwgC8ccV6F5ehQ5ZfR1 (Saude Bucal): fio dental, enxaguante bucal, fixador de dentadura.\n"
+        "Sti2wBBVLXD4RVTKTlfT (Barba/Depilacao): creme de barbear, lamina de barbear, creme depilatorio.\n"
+        "AeEUGZmYF5qw1ven2J3H (Papel Higienico): papel higienico.\n"
+        "eGslz72doMb21Qwkd1XK (Fralda Descartavel): fralda descartavel infantil.\n"
+        "v95NpcFm9WiZSCSfyERR (Absorvente): absorvente feminino.\n"
+        "sabonete (Sabonete): sabonete em barra e liquido.\n"
+        "corpo (Corpo): hidratante corporal, creme para corpo, locao.\n"
+        "3Vx5Pqg1DV8GuqmhpfQw (Linha Infantil): produtos de higiene infantil.\n"
+        "FfedlcNkjCHFmEL66DW0 (Kits/Higiene): kits de higiene pessoal.\n"
+        "higiene_bucal (Higiene Bucal): higiene bucal (pasta, escova, fio dental).\n"
+        "produtos_femininos (Produtos Femininos): produtos femininos de higiene.\n"
+        "produtos_infantis (Produtos Infantis): produtos infantis de higiene.\n"
+        "produtos_masculinos (Produtos Masculinos): produtos masculinos de higiene.\n"
+        "produtos_p_cabelo (Produtos para Cabelo/Perf): produtos para cabelo de perfumaria.\n"
+        "produtos_p_o_corpo (Produtos para o Corpo): produtos para o corpo de perfumaria.\n"
+        "CI7yNyLuVIvASZc576FC (Mais Itens/Higiene): residual de higiene pessoal.\n"
+        "\n"
+        "-- Graos (categoria u0Yzu9DRwcchumGYl8R4) --\n"
+        "GT3sj93gQpsM05eaVuVO (Amendoim): amendoim cru, torrado e derivados.\n"
+        "amYCjZDDLZE6AhuXyVKr (Canjica/Canjiquinha): canjica, canjiquinha, xerem.\n"
+        "UqgxbOVGbn7ou6Ylwcyo (Milho de Pipoca/Graos): milho para pipoca da categoria Graos.\n"
+        "4l4VK6pySGH5FuyRsEEC (Fava/Soja): fava, soja em grao.\n"
+        "QzTvWbiPJDwekbEI7ryg (Lentilha/Grao de Bico): lentilha, grao de bico, ervilha seca.\n"
+        "9yHf9IfiXk8ReERkUiJD (Mais Graos): residual de graos.\n"
+        "\n"
+        "-- Farinaceos --\n"
+        "4KMmmZtGrCG7DCitWPhq (Farinhas de Trigo e Fermentos): farinha de trigo e fermento.\n"
+        "GZAzxqi0JAb8xHvHDO8v (Farinha de Trigo): farinha de trigo especifica.\n"
+        "6SBFliF5x0CC92QAzevr (Fuba): fuba, creme de milho, flocos de milho.\n"
+        "farinhaMillho (Farinha de Milho): farinha de milho.\n"
+        "GeUHySwfH83BV1muxDE8 (Farinhas de Milho e Mandioca): farinhas de milho e mandioca combinadas.\n"
+        "BXy3GuJDraQDmXOsu7WG (Farinha de Mandioca): farinha de mandioca.\n"
+        "EQaxacw2tp4ikqxkGlq3 (Polvilho/Tapioca): polvilho doce, polvilho azedo, tapioca.\n"
+        "polvilhoAzedo (Polvilho Azedo): polvilho azedo.\n"
+        "trigoQuibe (Trigo para Quibe): trigo para quibe.\n"
+        "amendoimCanjica (Amendoim e Canjica/Far): amendoim e canjica na categoria Farinaceos.\n"
+        "LeqaWDb7dUBb3Z8V8Yqj (Milho de Pipoca/Farinaceos): milho para pipoca da categoria Farinaceos.\n"
+        "HLHgWIJNG8GYyrzHcBg0 (Farofas): farofa pronta e temperada.\n"
+        "P5VxFglAUrffTNlwTfOs (Farofa Pronta): farofa pronta.\n"
+        "PsUBkRHi6flhOYzsVZtZ (Farinha de Rosca): farinha de rosca.\n"
+        "VxaF9Rq2ybd7Liq7MNVN (Amido/Mingau): amido de milho (Maisena), mingau.\n"
+        "vopjiMZ0qeDHRxLY2tMX (Farinha Lactea): farinha lactea.\n"
+        "H5nhvZqyvMEB7SYHlV9D (Farinhas Variadas): farinhas variadas.\n"
+        "wwcNKKF8odl1RTCtDlsE (Mais Farinhas): residual de farinaceos.\n"
+        "\n"
+        "-- Cereais (categoria cereais, subcategorias com slug) --\n"
+        "arroz (ARROZ): arroz em geral.\n"
+        "feijao (FEIJAO): feijao em geral.\n"
+        "acucares (ACUCARES): acucar (cristal, refinado, demerara, mascavo).\n"
+        "oleos (OLEOS): oleo de soja, girassol, canola.\n"
+        "graos (GRAOS/Cereais): graos dentro da categoria Cereais.\n"
+        "farinaceos (FARINACEOS/Cereais): farinaceos dentro da categoria Cereais.\n"
+        "sal (SAL): sal de cozinha.\n"
+        "\n"
+        "-- Molhos e Temperos (categoria g9NEgrhPZDKwFVKQ8ahL) --\n"
+        "gltxTInDKmAQoXvUyebE (Sal/Tempero): sal temperado, sal grosso com ervas.\n"
+        "av4faj0R5gLkTHax4L56 (Caldo em Cubos): caldo Knorr/Maggi em cubo, tablete, po.\n"
+        "NxCHZjF7QNkfN7pFbSY9 (Saches): ketchup, maionese, molho em sache.\n"
+        "KyK2QGwUkMqrUfxHcRfS (Cartela): tempero em cartela de sachês.\n"
+        "XuS1HngsfAqQNepL7NwX (Parrilha): tempero tipo parrilha para churrasco.\n"
+        "CatLJxtm6lkdjWSzYvpS (Pacote): tempero em pacote (alho, cebola, colorau).\n"
+        "EKDxE9Ifrl7Jvluazdq2 (Molho em Frasco): molho de pimenta, shoyu, molho ingles.\n"
+        "0yOrFM3UvDvBXCUEGBYy (Molho em Garrafa): ketchup, mostarda, maionese em garrafa.\n"
+        "FuVblezvkEgSntEBHlom (Pote): tempero em pote (alho picado, pimenta).\n"
+        "VUcqWNMLuYSjEgAT8Zmn (Creme): creme de cebola, creme de alho.\n"
+        "HPNORjKYEl3QnlyCH3E1 (Especiais/Temperos): temperos especiais e gourmet.\n"
+        "JApKyu2HhyxFyDDfI7qX (Mais Temperos): residual de molhos e temperos.\n"
+        "\n"
+        "-- Conservas --\n"
+        "atomatados (ATOMATADOS): molho de tomate, extrato de tomate, tomate pelado.\n"
+        "conservas_enlatados (CONSERVAS/ENLATADOS): conservas enlatadas em geral.\n"
+        "batata_palha (BATATA PALHA): batata palha.\n"
+        "maionese (MAIONESE): maionese.\n"
+        "temperos_condimentos (TEMPEROS/CONDIMENTOS): temperos e condimentos.\n"
+        "temperos_molhos (TEMPEROS/MOLHOS): temperos e molhos.\n"
+        "derivados_de_carnes (DERIVADOS DE CARNES): atum, sardinha, carne seca em lata.\n"
+        "\n"
+        "-- Massas --\n"
+        "massas_semola (MASSAS SEMOLA): macarrao semola.\n"
+        "massas_c_ovos (MASSAS C/ OVOS): macarrao com ovos.\n"
+        "massas_para_lasanha (MASSAS PARA LASANHA): massa para lasanha.\n"
+        "macarrao_instantaneo (MACARRAO INSTANTANEO): macarrao instantaneo (Miojo).\n"
+        "queijo_ralado (QUEIJO RALADO): queijo ralado e parmesao.\n"
+        "\n"
+        "-- Salgadinhos e Petiscos (categoria Gxl7MlJm2Xva4azNur9R) --\n"
+        "7g2GSek9s9D0mpT6v6wl (Batatas): batata chips, batata frita de pacote.\n"
+        "Q6yFb56pbyGdi8QSbgpp (Cebolitos/Baconzitos/Doritos): salgadinhos tipo cebolito, baconzito, doritos.\n"
+        "QcE0hfRBQ4rjye8TCWxp (Cheetos/Fandangos): salgadinhos tipo cheetos, fandangos.\n"
+        "8PZiSjQr4FofaSFtbnbz (Gulozitos): gulozitos e similares.\n"
+        "7KgYnnqWpip4OpeQpMXI (Yokitos): yokitos e similares.\n"
+        "OU7p4AuZitKBofXXmuz9 (Plinc): plinc e similares.\n"
+        "MMGashoMWZcUDQHCfao4 (Pimentinhas): amendoim pimenta, amendoim japones, pimentinhas.\n"
+        "AnJUikAG6VmiqNKoks09 (Pipoca Doce): pipoca doce e caramelada.\n"
+        "t4rHknicXbLXyuaEW7pg (Milho Assado): milho assado, pipoca salgada de pacote.\n"
+        "elkvn4iqDee9kHt1mUzD (Petiscos): petiscos em geral (castanhas, amendoim tostado).\n"
+        "2LAQvqtnrMI9CaaMTKyz (Outros Chips): outros chips nao classificados acima.\n"
+        "\n"
+        "-- Gulodices (categoria ocbODuL4gh1SQNI9MUMn) --\n"
+        "JVrlQUQrDz1z9B7v7CZz (Bala): bala em geral.\n"
+        "5s5AqBMCAm1eTHzLTG6f (Chiclete): chiclete.\n"
+        "DbUVfZnV8jJInyKInKIC (Pirulito): pirulito.\n"
+        "431lCvsCEcL4H1aTIVrJ (Gomas): goma, jujuba.\n"
+        "WXg0CLiIehrNcLzO4WEz (Pastilhas): pastilha (Halls, Dentyne).\n"
+        "CyOhrPg4cYsXDekBzKrS (Mais Guloseimas): residual de guloseimas.\n"
+        "\n"
+        "-- Doces e Sobremesas (categoria z2Iv1xs8ve9uhaV4xgOL) --\n"
+        "Cr7GdWtH1JNnMXdSCwhC (Leite Condensado): leite condensado.\n"
+        "e5J05eEtPSM7r9XLLE0D (Creme de Leite): creme de leite.\n"
+        "SjS3AHQTPQcVORfcAY7T (Coco/Derivados): coco ralado, leite de coco, creme de coco.\n"
+        "FAyuLT11Zs0Ju7zTGPzw (Geleias): geleia de fruta.\n"
+        "wDMG33utTlofsqiaKMJ8 (Doce Pastoso): doce de leite, doce de amendoim pastoso.\n"
+        "Th1xGEGLzRB3bFE8Smyo (Doce Pedaco): goiabada, marmelada em pedaco.\n"
+        "3dPqFvOFxeEsVUtsS8kL (Cobertura): cobertura para sorvete, calda de chocolate.\n"
+        "jU77g8Z9fBh4y7kDbazP (Gelatinas): gelatina em po ou pronta.\n"
+        "ZXJuh32EpDxzFOqocUEy (Gourmet/Sobremesas): sobremesas gourmet.\n"
+        "OB0YqShFz1HUFmu3LZE3 (Mais Produtos/Sobremesas): residual de doces e sobremesas.\n"
+        "\n"
+        "-- Farmacia (categoria tBQebPhJCvz3scbEaYGu) --\n"
+        "3aMmRMAtWnsa75rrqdnG (Analgesicos): dipirona, paracetamol, ibuprofeno.\n"
+        "H79wk2s62mKzyWgU0pB9 (Curativos): curativo, esparadrapo, gaze, atadura.\n"
+        "D5Gf5XxEUmsxZkFxq0zk (Mais Produtos/Farmacia): residual de farmacia.\n"
+        "\n"
+        "-- Animais (categoria TNb0sHqTOLNuvxLtLKk5) --\n"
+        "ittlvWePhq2aIGPlRsZI (Alimento para Caes): racao para caes, petiscos caninos.\n"
+        "4JPg09HS4LaoxKKuuS1H (Alimento para Gatos): racao para gatos, petiscos felinos.\n"
+        "9rFsfInmrO8C8VwsAYF7 (Alimento para Passaros): racao e alpiste para passaros.\n"
+        "JE6vmHrlR0raXPIm0Sbp (Perfumaria e Higiene Pet): shampoo pet, perfume pet.\n"
+        "OF6GNcLvnDIvK6kFrUps (Utensilios Pet): comedouro, bebedouro, coleira, brinquedo pet.\n"
+        "94cwJ9A7cJhH6jJngrzy (Mais Produtos/Pet): residual de pet.\n"
+        "\n"
+        "-- PET (categoria pet, subcategorias com slug) --\n"
+        "cuidados (CUIDADOS): cuidados e higiene para animais de estimacao.\n"
+        "racoes_e_aperitivos (RACOES E APERITIVOS): racoes e aperitivos para animais.\n"
+        "\n"
+        "-- Mercearia --\n"
+        "HczoWLyYczCweXkwKm7p (Arroz/Mercearia): arroz.\n"
+        "3meLa69ALn2FpA6l5wha (Feijao/Mercearia): feijao.\n"
+        "MH7J73HyMe9Rn60rYHIg (Acucar/Mercearia): acucar.\n"
+        "cafe (Cafe/Cappuccino): cafe em po, cappuccino, cafe soluvel.\n"
+        "ECBq91eLZ3OPCCrWuS2N (Achocolatado em Po): achocolatado em po (Nescau, Ovomaltine).\n"
+        "oleo (Oleo/Mercearia): oleo de cozinha.\n"
+        "Cu0ygKyewwywtiqX7WsG (Azeite): azeite de oliva.\n"
+        "vinagre (Vinagre): vinagre.\n"
+        "adocantes (Adocantes): adocante liquido e em envelope.\n"
+        "VFa8q52BYLqu9AKr4p0M (Atomatado/Mercearia): molho e extrato de tomate.\n"
+        "massas (Massas/Mercearia): macarrao e massas.\n"
+        "BDiywe54uqEKpJG7r6WS (Macarrao Instantaneo/Mercearia): macarrao instantaneo.\n"
+        "0bZ58kb59vC4KFxDJX9h (Ketchup/Mostarda): ketchup e mostarda.\n"
+        "0pNu96PvdWabZgSigPOM (Molhos Salada): molho para salada, vinagrete.\n"
+        "6Gpl7D1ld94elJeIxLIM (Maionese/Mercearia): maionese.\n"
+        "G1fOTdGypO0q00XaPNPF (Condimentos/Mercearia): condimentos em geral.\n"
+        "3C8nAKY8C2SH4M07g7sQ (Temperos/Mercearia): temperos de mercearia.\n"
+        "b88jKH4HacTpT4Vddbfh (Molhos Diversos/Mercearia): molhos variados.\n"
+        "azeitona (Azeitona): azeitona.\n"
+        "9FGjG8dA0Wg7CDe04hJt (Palmito e Champignon): palmito e champignon em conserva.\n"
+        "uqB897hsbzJNMWJEiffN (Conservas/Mercearia): conservas em geral.\n"
+        "dnYsG0uStHONv2z2bLur (Enlatados): enlatados de mercearia.\n"
+        "sardinhaAtumCia (Sardinha/Atum): sardinha e atum em lata.\n"
+        "XDHnsRzAxPfvYl2IQFJB (Milho Verde): milho verde em lata.\n"
+        "YEaQKmNqf2nAmhun8uWX (Batata Palha/Mercearia): batata palha.\n"
+        "S0G0hPEpo3S6kP4OjPUM (Chocolate/Mercearia): chocolate em barra, caixa de bombom.\n"
+        "TVdzP5PNpl1tOWgyuBhl (Chocolate em Barras): chocolate em barras.\n"
+        "bombons (Bombons): bombons e trufas embaladas.\n"
+        "amidoDeMilho (Amido de Milho): amido de milho (Maisena).\n"
+        "8NZGnQn8xnXxsKOjdLjc (Fermento/Mercearia): fermento quimico e biologico.\n"
+        "VOuc2WkgBDP3kGVcULFK (Refresco em Po/Mercearia): refresco em po (Tang, Clight).\n"
+        "xWPXQKAFbOQ4xdod9yG0 (Agua Mineral/Mercearia): agua mineral.\n"
+        "QYMYZJoHQVJnXjqXsXmC (Filtros de Cafe): filtro de papel para cafe.\n"
+        "HUijBYWWNE7xbvkxDMZd (Papel Toalha/Guardanapo): papel toalha e guardanapo (mercearia).\n"
+        "DRTjw30hpraZWQgJCro5 (Sopa Pronta): sopa em caixinha, sopa instantanea.\n"
+        "1F0uI4Vur8BmU9WvaeeB (Torradas/Mercearia): torradas.\n"
+        "lacticinios (Laticinios/Mercearia): laticinios de mercearia.\n"
+        "salgadinhos (Salgadinhos/Mercearia): salgadinhos de mercearia.\n"
+        "wafer (Wafer/Mercearia): wafer de mercearia.\n"
+        "EnzL0GvNbpCr8LKn2ylC (Biscoitos/Mercearia): biscoitos de mercearia.\n"
+        "docesSobremesas (Doces e Sobremesas/Mercearia): doces e sobremesas de mercearia.\n"
+        "nc0LHNtYTtwsfTfd6aDT (Bolos/Mercearia): bolos embalados.\n"
+        "zm7BaN8gCQPuDnaO4E83 (Paes/Mercearia): paes embalados de mercearia.\n"
+        "produtosNaturais (Produtos Naturais/Mercearia): produtos naturais e organicos.\n"
+        "KplUqL0TuNy1LBhnHLZt (Churrasco/Mercearia): itens de churrasco de mercearia.\n"
+        "9vjpwjIMSPY6gSI0IL1H (Hortifruti/Mercearia): produtos hortifruti de mercearia.\n"
+        "9OuZeU8qgrsKkWqP4WCG (Hortifruti/Mercearia2): hortifruti vendido em mercearia.\n"
+        "HoFlKyoCKf9NbiryEPCy (Padaria/Mercearia): produtos de padaria em mercearia.\n"
+        "8yyiNGA5QAgPHmFRzBp1 (Ovo de Pascoa/Mercearia): ovo de pascoa.\n"
+        "Nc32lmol8xd4XG7uTYAV (Dia a Dia): produtos do dia a dia.\n"
+        "58o1isPrgis9qq17c14Z (Produtos Variados/Mercearia): variados residual de mercearia.\n"
+        "S0vBLpOG7ZaocXyE5ffk (Mercearia Geral): mercearia geral.\n"
+        "\n"
+        "-- Frios e Laticinios (categoria frios_e_laticinios, subcategorias com slug) --\n"
+        "frios (FRIOS): frios em geral.\n"
+        "iogurtes_danones (IOGURTES/DANONES): iogurtes e danonetes.\n"
+        "leite_pasteurizado (LEITE PASTEURIZADO): leite pasteurizado.\n"
+        "manteigas (MANTEIGAS): manteigas.\n"
+        "margarinas (MARGARINAS): margarinas.\n"
+        "massas_e_derivados (MASSAS E DERIVADOS): massas e derivados de frios.\n"
+        "requeijao (REQUEIJAO): requeijao.\n"
+        "conservas_sobremesas_a_granel (CONSERVAS/SOBREMESAS A GRANEL): conservas e sobremesas a granel.\n"
+        "\n"
+        "-- Ilhas e Congelados (categoria ilhas_e_congelados, subcategorias com slug) --\n"
+        "aperitivos (APERITIVOS): aperitivos congelados.\n"
+        "cortes_bovinos (CORTES BOVINOS): cortes bovinos congelados.\n"
+        "cortes_fran (CORTES FRAN): cortes de frango congelados.\n"
+        "embutidos (EMBUTIDOS): embutidos (linguica, salsicha) congelados.\n"
+        "frutos_do_mar (FRUTOS DO MAR): frutos do mar congelados.\n"
+        "hamburguer (HAMBURGUER): hamburguer congelado.\n"
+        "pratos_prontos (PRATOS PRONTOS): pratos prontos congelados (lasanha, estrogonofe).\n"
+        "\n"
+        "-- Matinal (categoria matinal, subcategorias com slug) --\n"
+        "alimentacao_infantil (ALIMENTACAO INFANTIL): alimentacao infantil.\n"
+        "bomboniere (BOMBONIERE): bomboniere, chocolates matinal.\n"
+        "culinaria_doce (CULINARIA DOCE): ingredientes para culinaria doce.\n"
+        "doces (DOCES/Matinal): doces em geral da secao matinal.\n"
+        "preparo_p_cafe_matinal (PREPARO CAFE MATINAL): preparos para cafe da manha.\n"
+        "prepparos_para_cafe_da_manha (PREPAROS CAFE DA MANHA): preparos para cafe da manha (variante).\n"
+        "\n"
+        "-- Utilidades --\n"
+        "OftUMqjK6lP2he9MuXy1 (Calcado): sandalia, chinelo, havaianas, alpargatas, pantufas e calcados em geral.\n"
+        "G5AQjgKSpVW3XE2tkmm9 (Cozinha/Utensilios): copo, taca, caneca, long drink, calice, prato, talher, garfo, faca (cutelaria), colher, assadeira, panela, tabua de corte, coador, espremedor, funil, jarra, tigela, pinca, abridor.\n"
+        "5HTK02F3cSm0gsaGgzZ5 (Caixa Termica): caixa termica, bolsa termica, garrafa termica, bule termico, marmita termica, cooler, isopor.\n"
+        "OWdS8XYbb9WP9GjZR7sy (Artigos de Festa): vela de aniversario, balao, bexiga, enfeite de festa, kit festa, decoracao de festa.\n"
+        "D9I1Te40XnWqvLesIROy (Pilha/Bateria): pilha alcalina (AA, AAA, D, C, 9v), bateria de botao (cr2032), pilha recarregavel.\n"
+        "FmVEH83EkZRoiu8TYNxj (Papelaria): caderno, papel, refil, fichario, pasta, caneta, lapis, canetinha, borracha, apontador, giz de cera, marcador, pincel atomico, fita adesiva, fita crepe, cola, grampo, clipe, envelope.\n"
+        "xs5Fi1DT8rAl0SaLV4JQ (Eletrico): lampada (LED, fluorescente), extensao eletrica, fio, cabo eletrico, resistencia, interruptor, conector eletrico, conector perfurado, soquete, rabicho, chip, carregador, teia soldada.\n"
+        "tomadas (Tomadas): tomada, adaptador eletrico, benjamin, filtro de linha, pino universal.\n"
+        "hvf3XNctMubOv90OoOMF (Ferramentas): ferramenta manual, chave de fenda, alicate, martelo, serrote, parafuso, prego, disco de corte, disco diamantado, eletrodo, diluente de tinta, material de construcao, telha, chapa, painel, perfil metalico.\n"
+        "Ghgy75J3VmAFEObHyUxX (Automotivo): oleo de moto, oleo de carro, aditivo automotivo, fluido de freio, produto para veiculo.\n"
+        "D3Tezodc8OSvNS6EP6cs (Jardinagem): terra adubada, substrato, vaso de planta, regador, fertilizante, adubo, semente.\n"
+        "5izG0lxD0E9eCKxvcRBW (Hidraulico): mangueira, registro, cano, conexao hidraulica, luva soldada, joelho, te hidraulico, conexao pvc.\n"
+        "NzaSK77OnOij97ZECFje (Area de Servicos): rodo, vassoura, escova de limpeza, palha de aco, pano de chao, balde, luva de limpeza, prendedor de roupa, varal, corda de varal, desentupidor.\n"
+        "lmcdTRQ9EHOJn9IVhXof (Mais Utilidades): tabaco, cigarro, charuto, fumo, seda de cigarro, papel de seda, piteira, isqueiro, acendedor, fosforo, palheiro, sacola plastica, saco delivery, saco freezer, embalagem, marmitex, pote, bandeja, filme plastico, bobina stretch, papel aluminio, guardanapo, canudo, vela generica (nao de aniversario), tampa descartavel, fio barbante, isca raticida, isca formiga, inseticida, repelente — residual de Utilidades."
     )
 
     def __init__(self, db_client):
@@ -341,17 +771,15 @@ class ProductCategorizerAgent:
             col_ref = (self.db.collection('estabelecimentos')
                        .document(estabelecimento_id)
                        .collection('ProductCategories'))
-            docs = col_ref.stream()
             categories = []
-            for doc in docs:
+            for doc in col_ref.stream():
                 data = doc.to_dict()
-                if data:
+                if data and data.get('isActive', True):
                     categories.append({
                         'id': data.get('id', doc.id),
                         'name': data.get('name', ''),
-                        'isActive': data.get('isActive', True)
                     })
-            self.log_message(f"Carregadas {len(categories)} categorias", "info")
+            self.log_message(f"Carregadas {len(categories)} categorias ativas", "info")
             return categories
         except Exception as e:
             self.log_message(f"Erro ao carregar categorias: {e}", "error")
@@ -362,25 +790,24 @@ class ProductCategorizerAgent:
             col_ref = (self.db.collection('estabelecimentos')
                        .document(estabelecimento_id)
                        .collection('ProductSubcategories'))
-            docs = col_ref.stream()
             subcategories = []
-            for doc in docs:
+            for doc in col_ref.stream():
                 data = doc.to_dict()
-                if data:
+                if data and data.get('isActive', True):
                     subcategories.append({
                         'id': data.get('id', doc.id),
                         'name': data.get('name', ''),
                         'categoryId': data.get('categoryId', ''),
-                        'isActive': data.get('isActive', True)
                     })
-            self.log_message(f"Carregadas {len(subcategories)} subcategorias", "info")
+            self.log_message(f"Carregadas {len(subcategories)} subcategorias ativas", "info")
             return subcategories
         except Exception as e:
             self.log_message(f"Erro ao carregar subcategorias: {e}", "error")
             return []
 
     def load_products(self, estabelecimento_id, only_uncategorized=False,
-                      filter_category_id=None, filter_subcategory_id=None):
+                      filter_category_id=None, filter_subcategory_id=None,
+                      use_images=False):
         try:
             col_ref = (self.db.collection('estabelecimentos')
                        .document(estabelecimento_id)
@@ -399,7 +826,12 @@ class ProductCategorizerAgent:
                     subs = data.get('subcategoriesIds') or []
                     if filter_subcategory_id not in subs:
                         continue
-                products.append({'id': doc.id, 'name': data['name']})
+                image_url = None
+                if use_images:
+                    imgs = data.get('images') or []
+                    if imgs and isinstance(imgs[0], dict):
+                        image_url = imgs[0].get('fileUrl')
+                products.append({'id': doc.id, 'name': data['name'], 'image_url': image_url})
             filtro = []
             if only_uncategorized:
                 filtro.append('apenas sem categoria')
@@ -409,20 +841,51 @@ class ProductCategorizerAgent:
                 filtro.append(f'subcategoria={filter_subcategory_id}')
             desc = f" ({', '.join(filtro)})" if filtro else ''
             self.log_message(f"Carregados {len(products)} produtos{desc}", "info")
+
             return products
         except Exception as e:
             self.log_message(f"Erro ao carregar produtos: {e}", "error")
             return []
 
-    def _call_openai(self, prompt, max_tokens=60):
+    def _image_url_exists(self, url):
+        """Verifica se a URL de imagem é acessível.
+        Usa GET com Range: bytes=0-0 pois Firebase Storage não responde corretamente a HEAD.
+        CONSERVADOR: só marca como inválida em caso de 404 definitivo.
+        Para rate-limit, timeout ou outros erros, assume que a imagem existe.
+        """
+        MAX_ATTEMPTS = 2
+        for attempt in range(MAX_ATTEMPTS):
+            try:
+                req = urllib.request.Request(url, headers={'Range': 'bytes=0-0'})
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    return resp.status in (200, 206)
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    return False  # definitivamente não existe
+                # Rate-limit (429), 403, 500, etc. → assume que existe
+                if attempt < MAX_ATTEMPTS - 1:
+                    time.sleep(0.5)
+                    continue
+                return True
+            except Exception:
+                # Timeout, erro de rede, etc. → assume que existe
+                if attempt < MAX_ATTEMPTS - 1:
+                    time.sleep(0.5)
+                    continue
+                return True
+        return True
+
+    def _call_openai(self, prompt, max_tokens=60, content=None, system_prompt=None):
         max_retries = 5
+        msg_content = content if content is not None else prompt
+        sys_msg = system_prompt if system_prompt is not None else self.cat_system_prompt
         for attempt in range(max_retries):
             try:
                 response = openai_client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[
-                        {"role": "system", "content": self.cat_system_prompt},
-                        {"role": "user", "content": prompt}
+                        {"role": "system", "content": sys_msg},
+                        {"role": "user", "content": msg_content}
                     ],
                     max_tokens=max_tokens,
                     temperature=0.1
@@ -457,90 +920,181 @@ class ProductCategorizerAgent:
 
     def _best_match(self, returned_id, valid_items):
         """Retorna o item com id que melhor corresponde ao retornado pela IA."""
+        if not returned_id or not valid_items:
+            return None
         valid_ids = {item['id'] for item in valid_items}
+        # 1. Match exato
         if returned_id in valid_ids:
             return returned_id
         lower = returned_id.lower()
+        # 2. Match exato case-insensitive
         for item in valid_items:
             if item['id'].lower() == lower:
                 return item['id']
+        # 3. Match parcial (IDs hex longos com prefixo extra, ex: "5G5AQjg..." → "G5AQjg...")
         for item in valid_items:
-            if item['id'].lower() in lower or lower in item['id'].lower():
+            item_lower = item['id'].lower()
+            if len(item_lower) >= 8 and (item_lower in lower or lower in item_lower):
                 return item['id']
-        return valid_items[0]['id'] if valid_items else None
+        # 4. Sem match — retorna None (não assume primeira subcategoria)
+        return None
 
     def get_category_and_subcategory(self, product_name, categories, subcategories):
-        # Uma única chamada retorna categoria e subcategoria no formato "cat_id|sub_id"
-        cats_text = "\n".join(f"{c['id']}|{c['name']}" for c in categories)
-        subs_text = "\n".join(f"{s['id']}|{s['categoryId']}|{s['name']}" for s in subcategories)
+        """Avalia subcategoria primeiro; a categoria é derivada da subcategoria escolhida."""
+        cat_by_id = {c['id']: c for c in categories}
+        subs_text = "\n".join(
+            f"{s['id']}|{s['name']}|{cat_by_id.get(s['categoryId'], {}).get('name', s['categoryId'])}"
+            for s in subcategories
+        )
         prompt = (
             f"Produto: \"{product_name}\"\n\n"
-            f"CATEGORIAS (id|nome):\n{cats_text}\n\n"
-            f"SUBCATEGORIAS (id|categoria_id|nome):\n{subs_text}\n\n"
-            f"Responda APENAS no formato exato: categoria_id|subcategoria_id\n"
-            f"Escolha a categoria e subcategoria mais adequadas para o produto."
+            f"SUBCATEGORIAS (id|nome|categoria):\n{subs_text}\n\n"
+            f"Responda APENAS com o id da subcategoria mais adequada para o produto.\n"
+            f"Sem explicações."
         )
         try:
-            raw = self._call_openai(prompt, max_tokens=80)
-            parts = raw.strip().split('|')
-            cat_raw = parts[0].strip() if len(parts) >= 1 else ''
-            sub_raw = parts[1].strip() if len(parts) >= 2 else ''
-            category_id = self._best_match(cat_raw, categories) if cat_raw else None
-            if not category_id:
-                self.log_message(f"Nao foi possivel determinar categoria para '{product_name}'", "warning")
+            raw = self._call_openai(prompt, max_tokens=60)
+            sub_id = self._best_match(raw.strip(), subcategories)
+            if not sub_id:
+                self.log_message(f"Nao foi possivel determinar subcategoria para '{product_name}'", "warning")
                 return None, None
-            relevant_subs = [s for s in subcategories if s['categoryId'] == category_id]
-            if not relevant_subs:
-                return category_id, None
-            subcategory_id = self._best_match(sub_raw, relevant_subs) if sub_raw else relevant_subs[0]['id']
-            return category_id, subcategory_id
+            sub = next(s for s in subcategories if s['id'] == sub_id)
+            return sub['categoryId'], sub_id
         except Exception as e:
             self.log_message(f"Erro na chamada OpenAI para '{product_name}': {e}", "error")
             return None, None
 
-    def get_categories_batch(self, product_names, categories, subcategories):
-        """Categoriza N produtos em uma única chamada. Retorna lista de (cat_id, sub_id)."""
-        cats_text = "\n".join(f"{c['id']}|{c['name']}" for c in categories)
-        subs_text = "\n".join(f"{s['id']}|{s['categoryId']}|{s['name']}" for s in subcategories)
-        numbered = "\n".join(f"{i+1}. {name}" for i, name in enumerate(product_names))
-        prompt = (
-            f"CATEGORIAS (id|nome):\n{cats_text}\n\n"
-            f"SUBCATEGORIAS (id|categoria_id|nome):\n{subs_text}\n\n"
-            f"Produtos:\n{numbered}\n\n"
-            f"Responda APENAS com uma linha por produto no formato exato:\n"
-            f"N. categoria_id|subcategoria_id\n"
-            f"Onde N é o número do produto. Sem explicações."
+    # Sufixo de formato adicionado ao cat_system_prompt nas chamadas em batch.
+    _BATCH_FORMAT_SUFFIX = (
+        "\n\n---\n"
+        "Para esta tarefa de batch, responda com UMA linha por produto, apenas o ID da subcategoria.\n"
+        "Formatos aceitos (escolha um e mantenha consistente):\n"
+        "  N. subcategoria_id\n"
+        "  subcategoria_id"
+    )
+
+    def get_categories_batch(self, product_names, categories, subcategories, image_urls=None):
+        """Avalia subcategoria primeiro em batch; a categoria é derivada da subcategoria. Retorna lista de (cat_id, sub_id)."""
+        cat_by_id = {c['id']: c for c in categories}
+        sub_by_id = {s['id']: s for s in subcategories}
+        subs_text = "\n".join(
+            f"{s['id']}|{s['name']}|{cat_by_id.get(s['categoryId'], {}).get('name', s['categoryId'])}"
+            for s in subcategories
         )
+        header = (
+            f"SUBCATEGORIAS (id|nome|categoria):\n{subs_text}\n\n"
+            f"Para cada produto abaixo, responda APENAS com o id da subcategoria mais adequada.\n"
+            f"Formato exato, uma linha por produto:\n"
+            f"N. subcategoria_id\n"
+            f"Onde N é o número do produto. Sem explicações.\n\n"
+            f"Produtos:"
+        )
+        has_images = bool(image_urls and any(image_urls))
+        if has_images:
+            content = [{"type": "text", "text": header}]
+            for i, (name, img_url) in enumerate(zip(product_names, image_urls)):
+                content.append({"type": "text", "text": f"\n{i+1}. {name}"})
+                if img_url:
+                    content.append({"type": "image_url", "image_url": {"url": img_url, "detail": "low"}})
+        else:
+            numbered = "\n".join(f"{i+1}. {name}" for i, name in enumerate(product_names))
+            content = None
+            prompt = f"{header}\n{numbered}"
         results = [(None, None)] * len(product_names)
+        numbered = "\n".join(f"{i+1}. {name}" for i, name in enumerate(product_names))
+        text_only_prompt = f"{header}\n{numbered}"
         try:
-            raw = self._call_openai(prompt, max_tokens=40 * len(product_names))
+            if has_images:
+                raw = self._call_openai('', max_tokens=30 * len(product_names), content=content,
+                                        system_prompt=self.cat_system_prompt + self._BATCH_FORMAT_SUFFIX)
+            else:
+                raw = self._call_openai(text_only_prompt, max_tokens=30 * len(product_names),
+                                        system_prompt=self.cat_system_prompt + self._BATCH_FORMAT_SUFFIX)
         except Exception as e:
-            self.log_message(f"Erro OpenAI no batch: {e}", "error")
-            return results
-        for line in raw.strip().split('\n'):
-            line = line.strip()
-            if not line:
-                continue
+            err_str = str(e).lower()
+            if has_images and ('image' in err_str or 'downloading' in err_str or '400' in err_str):
+                self.log_message(f"Erro ao processar imagens do batch, reprocessando sem imagens...", "warning")
+                try:
+                    raw = self._call_openai(text_only_prompt, max_tokens=30 * len(product_names),
+                                            system_prompt=self.cat_system_prompt + self._BATCH_FORMAT_SUFFIX)
+                except Exception as e2:
+                    self.log_message(f"Erro OpenAI no batch (sem imagens): {e2}", "error")
+                    return results
+            else:
+                self.log_message(f"Erro OpenAI no batch: {e}", "error")
+                return results
+
+        def _parse_batch_raw(raw_text):
+            parsed = [(None, None)] * len(product_names)
+            lines = [l.strip() for l in raw_text.strip().split('\n') if l.strip()]
+
+            # Detecta se há linhas no formato "N. id" (numeradas)
+            has_numbered = any(
+                line[:line.index('.')].strip().isdigit()
+                for line in lines
+                if '.' in line
+            )
+
+            if has_numbered:
+                # Formato: "N. subcategoria_id"
+                for line in lines:
+                    try:
+                        dot_idx = line.index('.')
+                        n = int(line[:dot_idx].strip()) - 1
+                        if n < 0 or n >= len(product_names):
+                            continue
+                        # Strip possível "id|nome|cat" após o ponto
+                        sub_id_raw = line[dot_idx + 1:].strip().split('|')[0].strip()
+                        sub_id = self._best_match(sub_id_raw, subcategories)
+                        if not sub_id:
+                            continue
+                        sub = sub_by_id.get(sub_id)
+                        if not sub:
+                            continue
+                        parsed[n] = (sub['categoryId'], sub_id)
+                    except (ValueError, IndexError):
+                        continue
+            else:
+                # Formato sequencial: uma linha por produto, sem numeração
+                # Suporta "id", "id|nome|cat", "id|cat"
+                for i, line in enumerate(lines):
+                    if i >= len(product_names):
+                        break
+                    sub_id_raw = line.split('|')[0].strip()
+                    sub_id = self._best_match(sub_id_raw, subcategories)
+                    if not sub_id:
+                        continue
+                    sub = sub_by_id.get(sub_id)
+                    if not sub:
+                        continue
+                    parsed[i] = (sub['categoryId'], sub_id)
+            return parsed
+
+        results = _parse_batch_raw(raw)
+
+        # Se todos os produtos falharam, loga o response e tenta novamente com prompt reforçado
+        if all(r == (None, None) for r in results):
+            self.log_message(
+                f"Batch retornou todos nulos. Response bruto (primeiros 300 chars): {raw[:300]!r}",
+                "warning"
+            )
+            retry_prompt = (
+                f"ATENÇÃO: Responda SOMENTE no formato exato abaixo, sem texto adicional:\n"
+                f"N. subcategoria_id\n\n"
+                f"{text_only_prompt}"
+            )
             try:
-                dot_idx = line.index('.')
-                n = int(line[:dot_idx].strip()) - 1
-                if n < 0 or n >= len(product_names):
-                    continue
-                rest = line[dot_idx + 1:].strip()
-                parts = rest.split('|')
-                cat_raw = parts[0].strip() if len(parts) >= 1 else ''
-                sub_raw = parts[1].strip() if len(parts) >= 2 else ''
-                category_id = self._best_match(cat_raw, categories) if cat_raw else None
-                if not category_id:
-                    continue
-                relevant_subs = [s for s in subcategories if s['categoryId'] == category_id]
-                if not relevant_subs:
-                    results[n] = (category_id, None)
-                else:
-                    subcategory_id = self._best_match(sub_raw, relevant_subs) if sub_raw else relevant_subs[0]['id']
-                    results[n] = (category_id, subcategory_id)
-            except (ValueError, IndexError):
-                continue
+                raw2 = self._call_openai(retry_prompt, max_tokens=30 * len(product_names),
+                                         system_prompt=self.cat_system_prompt + self._BATCH_FORMAT_SUFFIX)
+                results = _parse_batch_raw(raw2)
+                if all(r == (None, None) for r in results):
+                    self.log_message(
+                        f"Retry tambem falhou. Response bruto: {raw2[:300]!r}",
+                        "warning"
+                    )
+            except Exception as e:
+                self.log_message(f"Erro no retry do batch: {e}", "error")
+
         return results
 
     def update_product_categories(self, product_id, estabelecimento_id,
@@ -640,40 +1194,35 @@ class ProductCategorizerAgent:
             return []
 
     def _should_assign_to_category(self, product_name, category_name, target_subs):
-        """Pergunta a IA se o produto pertence a categoria e, se sim, qual subcategoria."""
-        subs_text = "\n".join([f"id={s['id']} | nome={s['name']}" for s in target_subs])
+        """Avalia pela subcategoria se o produto pertence à categoria."""
+        subs_text = "\n".join(f"{s['id']}|{s['name']}" for s in target_subs)
         prompt = (
-            f"Produto: \"{product_name}\"\n"
-            f"Categoria em avaliacao: {category_name}\n\n"
-            f"Este produto pertence a categoria '{category_name}'?\n"
-            f"Se SIM, responda: SIM|id_da_subcategoria\n"
-            f"Se NAO, responda apenas: NAO\n\n"
-            f"Subcategorias disponiveis:\n{subs_text}"
+            f"Produto: \"{product_name}\"\n\n"
+            f"Subcategorias de '{category_name}':\n{subs_text}\n\n"
+            f"Se o produto pertence a '{category_name}', responda com o id da subcategoria mais adequada.\n"
+            f"Se NAO pertence, responda apenas: NENHUMA"
         )
-        raw = self._call_openai(prompt, max_tokens=80).strip().upper()
-        if raw.startswith('SIM'):
-            parts = raw.split('|', 1)
-            sub_id_raw = parts[1].strip() if len(parts) > 1 else ''
-            sub_id = self._best_match(sub_id_raw, target_subs)
-            return True, sub_id
-        return False, None
+        raw = self._call_openai(prompt, max_tokens=60).strip()
+        if raw.upper() == 'NENHUMA':
+            return False, None
+        sub_id = self._best_match(raw, target_subs)
+        return (True, sub_id) if sub_id else (False, None)
 
     def _should_assign_batch(self, product_names, category_name, target_subs):
-        """Verifica em batch se cada produto pertence à categoria. Retorna lista de (fits, sub_id)."""
-        subs_text = "\n".join(f"id={s['id']} | nome={s['name']}" for s in target_subs)
+        """Avalia em batch pela subcategoria se cada produto pertence à categoria. Retorna lista de (fits, sub_id)."""
+        subs_text = "\n".join(f"{s['id']}|{s['name']}" for s in target_subs)
         numbered = "\n".join(f"{i+1}. {name}" for i, name in enumerate(product_names))
         prompt = (
-            f"Categoria em avaliacao: {category_name}\n\n"
-            f"Subcategorias disponiveis:\n{subs_text}\n\n"
-            f"Para cada produto abaixo, responda se pertence a '{category_name}'.\n"
+            f"Subcategorias de '{category_name}':\n{subs_text}\n\n"
+            f"Para cada produto, responda com o id da subcategoria mais adequada de '{category_name}'.\n"
+            f"Se o produto NAO pertence a '{category_name}', responda: N. NENHUMA\n"
             f"Formato exato, uma linha por produto:\n"
-            f"N. SIM|id_subcategoria\n"
-            f"N. NAO\n\n"
+            f"N. subcategoria_id\n\n"
             f"Produtos:\n{numbered}"
         )
         results = [(False, None)] * len(product_names)
         try:
-            raw = self._call_openai(prompt, max_tokens=40 * len(product_names))
+            raw = self._call_openai(prompt, max_tokens=30 * len(product_names))
         except Exception as e:
             self.log_message_targeted(f"Erro OpenAI no batch fase 2: {e}", "error")
             return results
@@ -686,14 +1235,12 @@ class ProductCategorizerAgent:
                 n = int(line[:dot_idx].strip()) - 1
                 if n < 0 or n >= len(product_names):
                     continue
-                rest = line[dot_idx + 1:].strip().upper()
-                if rest.startswith('SIM'):
-                    parts = rest.split('|', 1)
-                    sub_id_raw = parts[1].strip() if len(parts) > 1 else ''
-                    sub_id = self._best_match(sub_id_raw, target_subs)
-                    results[n] = (True, sub_id)
-                else:
+                rest = line[dot_idx + 1:].strip()
+                if rest.upper() == 'NENHUMA':
                     results[n] = (False, None)
+                else:
+                    sub_id = self._best_match(rest, target_subs)
+                    results[n] = (True, sub_id) if sub_id else (False, None)
             except (ValueError, IndexError):
                 continue
         return results
@@ -920,7 +1467,8 @@ class ProductCategorizerAgent:
 
     def run_categorization(self, estabelecimento_id, delay_between_products=0.5, dry_run=False,
                            only_uncategorized=False, filter_category_id=None,
-                           include_mercearia=False, filter_subcategory_id=None):
+                           include_mercearia=False, filter_subcategory_id=None,
+                           use_images=False):
         try:
             self.tokens_used = 0
             self.estimated_cost = 0
@@ -969,8 +1517,10 @@ class ProductCategorizerAgent:
                 categorizer_state['running'] = False
                 return False
 
+            if use_images:
+                self.log_message("Analise de imagens ativada", "info")
             products = self.load_products(estabelecimento_id, only_uncategorized,
-                                          filter_category_id, filter_subcategory_id)
+                                          filter_category_id, filter_subcategory_id, use_images)
             if not products:
                 self.log_message("Nenhum produto encontrado com os filtros aplicados", "warning")
                 categorizer_state['running'] = False
@@ -996,18 +1546,32 @@ class ProductCategorizerAgent:
                 f"Processando {total} produtos em {len(batches)} lotes de {BATCH_SIZE} (2 paralelos)", "info"
             )
 
+            def _tick_product(ok):
+                if ok:
+                    categorizer_state['progress']['updated'] += 1
+                else:
+                    categorizer_state['progress']['errors'] += 1
+                categorizer_state['progress']['processed'] += 1
+                categorizer_state['progress']['tokens_used'] = self.tokens_used
+                categorizer_state['progress']['estimated_cost'] = self.estimated_cost
+
             def _cat_batch(args):
                 batch_start, batch = args
                 if not categorizer_state['running']:
                     return
                 names = [p['name'] for p in batch]
                 self.update_progress({'id': batch[0]['id'], 'name': names[0], 'index': batch_start + 1, 'total': total})
-                cat_results = self.get_categories_batch(names, categories, subcategories)
-                for j, (product, (category_id, subcategory_id)) in enumerate(zip(batch, cat_results)):
+
+                if not categorizer_state['running']:
+                    return
+
+                image_urls = [p.get('image_url') for p in batch] if use_images else None
+                cat_results = self.get_categories_batch([p['name'] for p in batch], categories, subcategories, image_urls)
+                for idx, (product, (category_id, subcategory_id)) in enumerate(zip(batch, cat_results)):
                     if not categorizer_state['running']:
                         return
                     pid, pname = product['id'], product['name']
-                    i = batch_start + j + 1
+                    i = batch_start + idx + 1
                     self.log_message(f"[{i}/{total}] {pname}", "info")
                     with self._lock:
                         if not category_id or not subcategory_id:
@@ -1019,13 +1583,11 @@ class ProductCategorizerAgent:
                                     outros_cat_id, outros_sub_id,
                                     'Outros', 'Outros', dry_run
                                 )
-                                if ok:
-                                    categorizer_state['progress']['updated'] += 1
-                                else:
-                                    categorizer_state['progress']['errors'] += 1
+                                _tick_product(ok)
                             else:
                                 self.log_message(f"  Erro: nao foi possivel categorizar {pid}", "error")
                                 categorizer_state['progress']['errors'] += 1
+                                categorizer_state['progress']['processed'] += 1
                         else:
                             category_name = cat_by_id.get(category_id, {}).get('name', category_id)
                             subcategory_name = sub_by_id.get(subcategory_id, {}).get('name', subcategory_id)
@@ -1035,11 +1597,7 @@ class ProductCategorizerAgent:
                                 category_id, subcategory_id,
                                 category_name, subcategory_name, dry_run
                             )
-                            if ok:
-                                categorizer_state['progress']['updated'] += 1
-                            else:
-                                categorizer_state['progress']['errors'] += 1
-                        categorizer_state['progress']['processed'] += 1
+                            _tick_product(ok)
                         categorizer_state['progress']['tokens_used'] = self.tokens_used
                         categorizer_state['progress']['estimated_cost'] = self.estimated_cost
                     self.update_progress()
@@ -1518,13 +2076,14 @@ def start_automation():
         categories = data.get('categories', [])
         custom_prompt = data.get('custom_prompt', '').strip() or None
         filter_subcategory_id = data.get('filter_subcategory_id', '').strip() or None
+        use_images = bool(data.get('use_images', False))
 
         if not categories:
             return jsonify({'error': 'Selecione ao menos uma categoria'}), 400
 
 
         def run_thread():
-            automator.run_automation(estabelecimento_id, categories, delay, dry_run, custom_prompt, filter_subcategory_id)
+            automator.run_automation(estabelecimento_id, categories, delay, dry_run, custom_prompt, filter_subcategory_id, use_images)
 
         thread = Thread(target=run_thread)
         thread.daemon = True
@@ -1758,6 +2317,22 @@ def save_cat_prompt():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/categorizer/prompt/reset', methods=['POST'])
+def reset_cat_prompt():
+    """Restaura o prompt do Firestore para o DEFAULT_CAT_SYSTEM_PROMPT do codigo."""
+    global categorizer
+    if not categorizer:
+        return jsonify({'error': 'Categorizador nao inicializado'}), 500
+    try:
+        default = ProductCategorizerAgent.DEFAULT_CAT_SYSTEM_PROMPT
+        if categorizer.save_cat_prompt_to_firestore(default):
+            return jsonify({'success': True, 'message': 'Prompt restaurado para o padrao do codigo'})
+        else:
+            return jsonify({'error': 'Erro ao salvar no Firestore'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/categorizer/start', methods=['POST'])
 def start_categorization():
     global categorizer
@@ -1775,6 +2350,7 @@ def start_categorization():
     filter_category_id = data.get('filter_category_id', '').strip() or None
     filter_subcategory_id = data.get('filter_subcategory_id', '').strip() or None
     include_mercearia = bool(data.get('include_mercearia', False))
+    use_images = bool(data.get('use_images', False))
     custom_prompt = data.get('custom_prompt', '').strip() or None
 
     # Sobrescreve o prompt apenas para esta execucao (restaura ao final)
@@ -1790,6 +2366,7 @@ def start_categorization():
                 filter_category_id=filter_category_id,
                 include_mercearia=include_mercearia,
                 filter_subcategory_id=filter_subcategory_id,
+                use_images=use_images,
             )
         finally:
             if custom_prompt:

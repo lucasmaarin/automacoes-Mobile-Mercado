@@ -1056,6 +1056,11 @@
                         <span class="toggle-track"><span class="toggle-thumb"></span></span>
                         <span>Modo de teste (Dry Run)</span>
                     </label>
+                    <label class="toggle-sw">
+                        <input type="checkbox" id="renUseImages">
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                        <span>Analisar imagens dos produtos</span>
+                    </label>
                 </div>
             </div>
 
@@ -1196,6 +1201,11 @@
                             <input type="checkbox" id="catIncludeMercearia">
                             <span class="toggle-track"><span class="toggle-thumb"></span></span>
                             <span>Incluir Mercearia</span>
+                        </label>
+                        <label class="toggle-sw">
+                            <input type="checkbox" id="catUseImages">
+                            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                            <span>Analisar imagens dos produtos</span>
                         </label>
                     </div>
                     <div style="margin-top:10px" id="catCategoryFilter">
@@ -1683,7 +1693,8 @@
             btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Iniciando...';
 
             const filterSubcatId = $('renSubcatSel').value || null;
-            const payload = { estabelecimento_id:estId, delay, dry_run:dryRun, categories:cats };
+            const useImages = $('renUseImages').checked;
+            const payload = { estabelecimento_id:estId, delay, dry_run:dryRun, categories:cats, use_images:useImages };
             if(prompt) payload.custom_prompt = prompt;
             if(filterSubcatId) payload.filter_subcategory_id = filterSubcatId;
             try {
@@ -1839,10 +1850,11 @@
             const dryRun = $('catDryRun').checked;
             const onlyUncategorized = $('catOnlyUncategorized').checked;
             const includeMercearia = $('catIncludeMercearia').checked;
+            const catUseImages = $('catUseImages').checked;
             const filterCategory = $('catFilterCategory').value.trim() || null;
             const filterSubcat = $('catSubcatSel').value || null;
             const prompt = $('catPromptTa').value.trim();
-            const payload = {estabelecimento_id:estId, delay, dry_run:dryRun, only_uncategorized:onlyUncategorized, include_mercearia:includeMercearia};
+            const payload = {estabelecimento_id:estId, delay, dry_run:dryRun, only_uncategorized:onlyUncategorized, include_mercearia:includeMercearia, use_images:catUseImages};
             if(filterCategory) payload.filter_category_id = filterCategory;
             if(filterSubcat) payload.filter_subcategory_id = filterSubcat;
             if(prompt) payload.custom_prompt = prompt;
