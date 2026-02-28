@@ -1356,8 +1356,9 @@
                         Explorador Rápido
                     </div>
                     <div class="row" style="margin-bottom:12px">
-                        <div class="field"><label>Caminho</label><input type="text" id="sPath" placeholder="estabelecimentos/ID/Products" spellcheck="false"></div>
-                        <div class="field sm"><label>Max</label><input type="number" id="sMax" value="5" min="1" max="50"></div>
+                        <div class="field"><label>Caminho <span style="font-size:.78rem;color:var(--text-secondary)">(use * para todos os estabs)</span></label><input type="text" id="sPath" placeholder="estabelecimentos/*/ProductSubcategories" spellcheck="false"></div>
+                        <div class="field sm"><label>Max/estab</label><input type="number" id="sMax" value="5" min="1" max="200"></div>
+                        <button class="btn btn-ghost" onclick="SExp.todos()" style="margin-bottom:0;align-self:flex-end" title="Todos os estabelecimentos">★ Todos</button>
                         <button class="btn btn-p" onclick="SExp.explore()" style="margin-bottom:0;align-self:flex-end">Explorar</button>
                     </div>
                     <div class="btn-group"><button class="btn btn-ghost" onclick="SExp.copy()">Copiar JSON</button></div>
@@ -1372,8 +1373,9 @@
                         Explorador Avançado
                     </div>
                     <div class="row" style="margin-bottom:12px">
-                        <div class="field field-rel"><label>Caminho</label><input type="text" id="aPath" placeholder="estabelecimentos/ID/Products" oninput="AExp.onInput()" spellcheck="false"><div class="sugg-drop" id="aSugg"></div></div>
-                        <div class="field sm"><label>Max</label><input type="number" id="aMax" value="10" min="1" max="50"></div>
+                        <div class="field field-rel"><label>Caminho <span style="font-size:.78rem;color:var(--text-secondary)">(use * para todos os estabs)</span></label><input type="text" id="aPath" placeholder="estabelecimentos/*/ProductSubcategories" oninput="AExp.onInput()" spellcheck="false"><div class="sugg-drop" id="aSugg"></div></div>
+                        <div class="field sm"><label>Max/estab</label><input type="number" id="aMax" value="10" min="1" max="200"></div>
+                        <button class="btn btn-ghost" onclick="AExp.todos()" style="margin-bottom:0;align-self:flex-end" title="Todos os estabelecimentos">★ Todos</button>
                         <button class="btn btn-p" onclick="AExp.explore()" style="margin-bottom:0;align-self:flex-end">Explorar</button>
                     </div>
                     <div class="btn-group"><button class="btn btn-ghost" onclick="AExp.copy()">Copiar JSON</button><button class="btn btn-ghost" onclick="AExp.cache()">Ver Cache</button></div>
@@ -1798,6 +1800,17 @@
         }
     };
 
+    // Substitui o ID do estabelecimento por * no caminho, ou insere padrão
+    function _pathToTodos(inputId) {
+        const inp = $(inputId);
+        let p = inp.value.trim();
+        // Se tem um segmento de ID de estabelecimento, substitui por *
+        p = p.replace(/^(estabelecimentos\/)([^\/]+)/, '$1*');
+        if (!p) p = 'estabelecimentos/*';
+        inp.value = p;
+        inp.dispatchEvent(new Event('input'));
+    }
+
     // === Simple Explorer ===
     const SExp = {
         _json: null,
@@ -1808,6 +1821,7 @@
             try { const r=await(await fetch(API+'/api/explorer-simple/explore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,max_docs:max})})).json(); this._json=r; renderJson($('sResult'),r); }
             catch(e){$('sResult').textContent='Erro: '+e.message;}
         },
+        todos() { _pathToTodos('sPath'); },
         copy() { if(this._json) navigator.clipboard.writeText(JSON.stringify(this._json,null,2)).then(()=>toast('JSON copiado','success')).catch(()=>toast('Erro ao copiar','error')); }
     };
 
@@ -1820,6 +1834,7 @@
             try { const r=await(await fetch(API+'/api/explorer/explore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,max_docs:max})})).json(); this._json=r; renderJson($('aResult'),r); }
             catch(e){$('aResult').textContent='Erro: '+e.message;}
         },
+        todos() { _pathToTodos('aPath'); },
         onInput() { clearTimeout(this._to); this._to=setTimeout(()=>this.suggest(),400); },
         async suggest() {
             const path=$('aPath').value.trim(), list=$('aSugg');

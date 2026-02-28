@@ -9,6 +9,7 @@ import os
 import logging
 import time
 import json
+import re
 import urllib.request
 import urllib.error
 from typing import List, Dict, Any
@@ -967,10 +968,9 @@ class ProductCategorizerAgent:
     # Sufixo de formato adicionado ao cat_system_prompt nas chamadas em batch.
     _BATCH_FORMAT_SUFFIX = (
         "\n\n---\n"
-        "Para esta tarefa de batch, responda com UMA linha por produto, apenas o ID da subcategoria.\n"
-        "Formatos aceitos (escolha um e mantenha consistente):\n"
-        "  N. subcategoria_id\n"
-        "  subcategoria_id"
+        "Para esta tarefa de batch, responda SOMENTE com um objeto JSON:\n"
+        "{\"1\": \"subcategoria_id\", \"2\": \"subcategoria_id\", ...}\n"
+        "A chave é o número do produto (começando em 1). Sem markdown, sem explicações."
     )
 
     def get_categories_batch(self, product_names, categories, subcategories, image_urls=None):
@@ -983,10 +983,9 @@ class ProductCategorizerAgent:
         )
         header = (
             f"SUBCATEGORIAS (id|nome|categoria):\n{subs_text}\n\n"
-            f"Para cada produto abaixo, responda APENAS com o id da subcategoria mais adequada.\n"
-            f"Formato exato, uma linha por produto:\n"
-            f"N. subcategoria_id\n"
-            f"Onde N é o número do produto. Sem explicações.\n\n"
+            f"Para cada produto abaixo, responda SOMENTE com JSON:\n"
+            f"{{\"1\": \"subcategoria_id\", \"2\": \"subcategoria_id\", ...}}\n"
+            f"A chave é o número do produto. Sem markdown, sem explicações.\n\n"
             f"Produtos:"
         )
         has_images = bool(image_urls and any(image_urls))
@@ -1024,50 +1023,67 @@ class ProductCategorizerAgent:
                 self.log_message(f"Erro OpenAI no batch: {e}", "error")
                 return results
 
+        def _resolve_sub(sub_id_raw):
+            sub_id = self._best_match(sub_id_raw.split('|')[0].strip(), subcategories)
+            if not sub_id:
+                return None, None
+            sub = sub_by_id.get(sub_id)
+            if not sub:
+                return None, None
+            return sub['categoryId'], sub_id
+
         def _parse_batch_raw(raw_text):
             parsed = [(None, None)] * len(product_names)
-            lines = [l.strip() for l in raw_text.strip().split('\n') if l.strip()]
+            text = raw_text.strip()
 
-            # Detecta se há linhas no formato "N. id" (numeradas)
+            # Remove markdown code fences if present
+            text = re.sub(r'```[a-z]*\n?', '', text).strip()
+
+            # 1) Tenta JSON: {"1": "sub_id", "2": "sub_id", ...}
+            json_match = re.search(r'\{[^{}]+\}', text, re.DOTALL)
+            if json_match:
+                try:
+                    mapping = json.loads(json_match.group())
+                    for key, val in mapping.items():
+                        try:
+                            n = int(key) - 1
+                            if n < 0 or n >= len(product_names):
+                                continue
+                            cat_id, sub_id = _resolve_sub(str(val))
+                            if sub_id:
+                                parsed[n] = (cat_id, sub_id)
+                        except (ValueError, TypeError):
+                            continue
+                    return parsed
+                except (json.JSONDecodeError, ValueError):
+                    pass
+
+            # 2) Fallback: formato numerado "N. sub_id"
+            lines = [l.strip() for l in text.split('\n') if l.strip()]
             has_numbered = any(
                 line[:line.index('.')].strip().isdigit()
-                for line in lines
-                if '.' in line
+                for line in lines if '.' in line
             )
-
             if has_numbered:
-                # Formato: "N. subcategoria_id"
                 for line in lines:
                     try:
                         dot_idx = line.index('.')
                         n = int(line[:dot_idx].strip()) - 1
                         if n < 0 or n >= len(product_names):
                             continue
-                        # Strip possível "id|nome|cat" após o ponto
-                        sub_id_raw = line[dot_idx + 1:].strip().split('|')[0].strip()
-                        sub_id = self._best_match(sub_id_raw, subcategories)
-                        if not sub_id:
-                            continue
-                        sub = sub_by_id.get(sub_id)
-                        if not sub:
-                            continue
-                        parsed[n] = (sub['categoryId'], sub_id)
+                        cat_id, sub_id = _resolve_sub(line[dot_idx + 1:].strip())
+                        if sub_id:
+                            parsed[n] = (cat_id, sub_id)
                     except (ValueError, IndexError):
                         continue
             else:
-                # Formato sequencial: uma linha por produto, sem numeração
-                # Suporta "id", "id|nome|cat", "id|cat"
+                # 3) Último recurso: sequencial (sujeito a desalinhamento)
                 for i, line in enumerate(lines):
                     if i >= len(product_names):
                         break
-                    sub_id_raw = line.split('|')[0].strip()
-                    sub_id = self._best_match(sub_id_raw, subcategories)
-                    if not sub_id:
-                        continue
-                    sub = sub_by_id.get(sub_id)
-                    if not sub:
-                        continue
-                    parsed[i] = (sub['categoryId'], sub_id)
+                    cat_id, sub_id = _resolve_sub(line)
+                    if sub_id:
+                        parsed[i] = (cat_id, sub_id)
             return parsed
 
         results = _parse_batch_raw(raw)
@@ -1079,8 +1095,8 @@ class ProductCategorizerAgent:
                 "warning"
             )
             retry_prompt = (
-                f"ATENÇÃO: Responda SOMENTE no formato exato abaixo, sem texto adicional:\n"
-                f"N. subcategoria_id\n\n"
+                f"ATENÇÃO: Responda SOMENTE com JSON puro, sem markdown:\n"
+                f"{{\"1\": \"subcategoria_id\", \"2\": \"subcategoria_id\", ...}}\n\n"
                 f"{text_only_prompt}"
             )
             try:
@@ -1842,6 +1858,66 @@ _DEFAULT_ESTABELECIMENTOS = [
 ]
 
 
+def _get_all_establishment_ids():
+    """Retorna todos os IDs de estabelecimentos (padrão + extras salvos no Firestore)."""
+    result = [e['id'] for e in _DEFAULT_ESTABELECIMENTOS]
+    seen = set(result)
+    try:
+        if db:
+            doc = db.collection('Automacoes').document('config').get()
+            if doc.exists:
+                for e in (doc.to_dict() or {}).get('estabelecimentos', []):
+                    eid = e.get('id', '').strip()
+                    if eid and eid not in seen:
+                        result.append(eid)
+                        seen.add(eid)
+    except Exception:
+        pass
+    return result
+
+
+def _explore_wildcard(path, max_docs, explorer):
+    """Busca um caminho com * em todos os estabelecimentos e mescla sem repetição.
+    Suporta qualquer subcoleção: ex. 'estabelecimentos/*/ProductSubcategories'.
+    """
+    estab_ids = _get_all_establishment_ids()
+
+    def fetch_one(eid):
+        real_path = path.replace('*', eid, 1)
+        try:
+            # Em modo wildcard busca sem limite para não perder documentos
+            return eid, explorer.explore_firestore_path(real_path, 9999)
+        except Exception as e:
+            return eid, {'error': str(e)}
+
+    merged_docs = {}   # doc_id -> primeiro doc encontrado (sem repetição)
+    estabs_ok = []
+    estabs_err = []
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for eid, result in ex.map(fetch_one, estab_ids):
+            if isinstance(result, dict) and 'error' in result:
+                estabs_err.append(eid)
+                continue
+            estabs_ok.append(eid)
+            for doc in result.get('documents', []):
+                doc_id = doc.get('id')
+                if doc_id and doc_id not in merged_docs:
+                    merged_docs[doc_id] = doc
+
+    docs = list(merged_docs.values())
+    return {
+        'type': 'collection_all',
+        'path': path,
+        'name': path.split('/')[-1],
+        'establishments_queried': len(estabs_ok),
+        'establishments_failed': estabs_err,
+        'total_unique': len(docs),
+        'count': len(docs),
+        'documents': docs,
+    }
+
+
 @app.route('/api/settings/estabelecimentos', methods=['GET'])
 def get_estabelecimentos():
     result = [dict(e) for e in _DEFAULT_ESTABELECIMENTOS]
@@ -2171,7 +2247,7 @@ def explorer_explore():
     try:
         data = request.json or {}
         path = data.get('path', '').strip()
-        max_docs = min(int(data.get('max_docs', 10)), 50)
+        max_docs = min(int(data.get('max_docs', 10)), 200)
 
         if path in explorer_state['structure_cache']:
             cached_result = explorer_state['structure_cache'][path]
@@ -2181,7 +2257,12 @@ def explorer_explore():
                 mimetype="application/json"
             )
 
-        result = advanced_explorer.explore_firestore_path(path, max_docs)
+        if '*' in path:
+            result = _explore_wildcard(path, max_docs, advanced_explorer)
+        else:
+            result = advanced_explorer.explore_firestore_path(path, max_docs)
+
+        explorer_state['structure_cache'][path] = result
         return Response(
             json.dumps({'success': True, 'data': result}, default=firestore_default),
             mimetype="application/json"
@@ -2276,8 +2357,22 @@ def simple_explore():
     try:
         data = request.json or {}
         path = data.get('path', '').strip()
-        max_docs = int(data.get('max_docs', 5))
-        result = simple_explorer.explore(path, max_docs)
+        max_docs = min(int(data.get('max_docs', 5)), 200)
+
+        if '*' in path:
+            # Adapta FirestoreSimpleExplorer para o wildcard:
+            # wraps simple_explorer.explore() num objeto compatível com _explore_wildcard
+            class _SimpleAsAdvanced:
+                def __init__(self, s): self._s = s
+                def explore_firestore_path(self, p, m):
+                    r = self._s.explore(p, m)
+                    # Normaliza para o formato {documents: [...]}
+                    docs = r.get('documents') or ([r['data']] if 'data' in r else [])
+                    return {'documents': docs}
+            result = _explore_wildcard(path, max_docs, _SimpleAsAdvanced(simple_explorer))
+        else:
+            result = simple_explorer.explore(path, max_docs)
+
         result_safe = to_json_safe(result)
         return Response(json.dumps({'success': True, 'data': result_safe}, ensure_ascii=False), mimetype="application/json")
     except Exception as e:
