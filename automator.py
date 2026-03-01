@@ -23,15 +23,136 @@ class FirestoreProductAutomator:
 
 IMPORTANTE: Sua tarefa e SEMPRE MELHORAR o nome do produto. NUNCA retorne o nome original inalterado.
 
-REGRAS DE NOMENCLATURA:
-- Use Title Case (primeira letra de cada palavra em maiusculo), exceto artigos e preposicoes curtas.
-- Mantenha a marca no inicio do nome quando presente.
-- Expanda abreviacoes comuns: "c/" → "com", "s/" → "sem", "kg" → "kg", "ml" → "ml", "lt" → "L".
-- Inclua peso/volume quando presente no nome original (ex: 500g, 1L, 200ml).
-- Remova caracteres especiais desnecessarios, codigos internos e informacoes irrelevantes para o consumidor.
-- Nao repita a categoria no nome do produto.
-- Seja conciso: prefira nomes curtos e claros.
-- Corrija erros de ortografia e digitacao.
+Analise o nome do produto atual e sugira um nome MELHOR que seja:
+- Mais profissional e padronizado
+- Claro e descritivo
+- Adequado para sistemas de inventario
+- Expandir abreviacoes (tv -> Televisao, cel -> Celular, etc.)
+- Formatacao: Apenas a primeira letra de cada palavra principal maiuscula
+- Respeite os nomes das marcas originais (ex: LG, Samsung, Apple)
+- Adicione especificacoes quando possivel
+- Organize as informacoes de forma logica
+- Elimine abreviacoes tecnicas e coloque a palavra completa, exemplo COZ > cozido ou cozinha dependendo do produto, Bdj > bandeja, (primeiras letras das abreviacoes transformadas em letra minusculas) se o nome for passar 7 tokens, apenas retire a abreviacao
+- Siga esta estrutura: [Produto principal] + [Marca/variante] + [Peso/quantidade]
+- Nao ultrapassar 7 tokens
+- Coloque os acentos das respectivas palavras, exemplo: Purissima > Puríssima, Agua > Água
+- L de Litros manter maiusculo, mas ml minusculo
+
+Exemplos de transformacoes que voce deve fazer:
+- KETCHUP HEINZ 1.033KG -> Ketchup Heinz 1.033Kg
+- 260GR -> 260g
+- 260 GR -> 260g
+- "TRAD" -> "Tradicional"
+- "S MIUDOS" -> "S/Miudos"
+- "C BACON" -> "C/Bacon"
+- "QJO" -> "Queijo"
+- "C QJO" -> "C/Queijo"
+- "CACHACA" -> "Cachaça"
+- "PECA" -> "Peça"
+- "CURACAU" -> "Curaçau"
+- "LIM" -> "Limao"
+- "LIMAO" -> "Limão"
+- "HIDROT" -> "Hidrotonico"
+- "BEB" -> "Bebida"
+- "CERV" -> "Cerveja"
+- "GHOSTFORCE" -> "Ghost Force"
+- "Bdj" -> "Bandeja" (ou retirar se o nome ultrapassar 7 tokens)
+- "DIET" -> "Diet"
+- "MACA" -> "Maçã"
+- "RECH AVEL" -> "Recheio de Avelã"
+- "SALG" -> "Salgadinho" (Se for um salgadinho e nao um salgado de festa)
+- "CX 48" -> "Caixa 48 Unidades"
+
+Abreviacoes para expandir:
+- GF ou Gf = Garrafa
+- GR = g
+- KG = Kg
+- PC = Pacote
+- VD = Vidro
+- CEST = Cesta
+- BRC = Branco
+- TP1 = Tipo 1
+- TRAD = Tradicional
+- SCH = Sache
+- SC = Sacola
+- PCT = Pacote
+- CX = Caixa
+- SANT = Sanitizante
+- LIQUI = Liquido
+- FAR = Farinha
+- PUL = Pullman
+- Choc = Chocolate
+- Choco = Chocolate
+- Calif = California
+- AMDOA = Amendoa
+- CARAM = Caramelo
+- MOR = Morango
+- BAN = Banana
+- BCO = Bacon
+- UND = Unidade
+- PIC = Picante
+- GL = Galinha
+- C = com
+- KINORR = Knorr
+- DF = Defumado
+- XZ = Xadrez
+- TEMP = Temperada
+- CEB = Cebola
+- SACHET = Sache
+
+REGRA OBRIGATORIA: O nome que voce retornar DEVE ser diferente e melhor que o original.
+
+Palavras ou abreviacoes para retirar completamente do nome:
+- PT
+- TP
+- VDO
+- VD
+- UN/0001/UN
+- ESTR
+- PCT
+- CITR
+- UN/0001
+- PRECIF
+- ELMA CHIPS
+- PT/0012/U
+- PC10UN
+- 12X140ML
+- 1X200ML
+- 6XFD
+- PT/0010/UN
+- FA
+- 12X10
+- COND
+- 1010KG
+- 52x60g
+- 66x100g
+- 001/u
+- FD
+- ART BREAD
+- PM
+- 6x50gr
+- 6x55gr
+- PET
+- LF
+- LT
+- FD/0001/UN
+- GOU
+- QD
+- FRAPE
+- RANC
+- DP17X85G
+- NUTS
+- SUIRL
+- (8x36g)
+- 8x36g
+- CX/0040/UN
+- Unidades
+- 70x130g
+- 40x100g
+- SQZ
+- EXT
+- 12X50ML
+- SACH
 
 MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambiguo):
 - Pingo D'Ouro → produto do tipo Salgadinho
