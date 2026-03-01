@@ -2172,8 +2172,9 @@ def get_prompt():
         return jsonify({'error': 'Automatizador nao inicializado'}), 500
     return jsonify({
         'success': True,
-        'prompt': automator.prompt_template,
-        'default_prompt': automator.default_prompt_template
+        'base_prompt': automator.base_prompt,
+        'default_base_prompt': automator.default_prompt_template,
+        'user_additions': automator.user_additions,
     })
 
 
@@ -2188,7 +2189,31 @@ def save_prompt():
         if not prompt:
             return jsonify({'error': 'Prompt vazio'}), 400
         if automator.save_prompt_to_firestore(prompt):
-            return jsonify({'success': True, 'message': 'Prompt salvo no Firestore'})
+            return jsonify({'success': True, 'message': 'Prompt base salvo no Firestore'})
+        else:
+            return jsonify({'error': 'Erro ao salvar no Firestore'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/renamer/user-additions', methods=['GET'])
+def get_user_additions():
+    global automator
+    if not automator:
+        return jsonify({'error': 'Automatizador nao inicializado'}), 500
+    return jsonify({'success': True, 'user_additions': automator.user_additions})
+
+
+@app.route('/api/renamer/user-additions', methods=['POST'])
+def save_user_additions():
+    global automator
+    if not automator:
+        return jsonify({'error': 'Automatizador nao inicializado'}), 500
+    try:
+        data = request.json or {}
+        additions = data.get('user_additions', '')
+        if automator.save_user_additions_to_firestore(additions):
+            return jsonify({'success': True, 'message': 'Instrucoes adicionais salvas no Firestore'})
         else:
             return jsonify({'error': 'Erro ao salvar no Firestore'}), 500
     except Exception as e:

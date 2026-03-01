@@ -160,38 +160,62 @@ MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambi
 - Look → produto do tipo Biscoito Wafer
 - Todechini → produto do tipo Bolacha de Agua e Sal
 - Nugget Pasta → produto do tipo Graxa para Sapatos (qualquer cor: Preta, Marrom, Neutra, etc.)"""
-        saved = self.load_prompt_from_firestore()
-        self.prompt_template = saved if saved else self.default_prompt_template
+        self.base_prompt, self.user_additions = self.load_prompt_from_firestore()
 
-    def load_prompt_from_firestore(self) -> str:
+    def load_prompt_from_firestore(self):
+        """Retorna (base_prompt, user_additions) do Firestore, ou defaults."""
         try:
             doc_ref = self.db.collection('Automacoes').document('padronizador_nomes')
             doc = doc_ref.get()
             if doc.exists:
                 data = doc.to_dict()
-                prompt = data.get('prompt', '').strip()
-                if prompt:
-                    logger.info("Instrucoes carregadas do Firestore (Automacoes/padronizador_nomes)")
-                    return prompt
-            return None
+                base = data.get('base_prompt', '').strip()
+                # fallback para campo legado 'prompt'
+                if not base:
+                    base = data.get('prompt', '').strip()
+                additions = data.get('user_additions', '').strip()
+                if base:
+                    logger.info("Prompt base carregado do Firestore (Automacoes/padronizador_nomes)")
+                    return base, additions
+            return self.default_prompt_template, ''
         except Exception as e:
             logger.warning(f"Nao foi possivel carregar prompt do Firestore: {e}")
-            return None
+            return self.default_prompt_template, ''
+
+    def get_full_prompt(self) -> str:
+        additions = self.user_additions.strip()
+        if additions:
+            return self.base_prompt + "\n\n" + additions
+        return self.base_prompt
 
     def save_prompt_to_firestore(self, prompt: str) -> bool:
         try:
             doc_ref = self.db.collection('Automacoes').document('padronizador_nomes')
             doc_ref.set({
-                'prompt': prompt,
+                'base_prompt': prompt,
                 'updated_at': datetime.now().isoformat(),
                 'tool': 'padronizador_nomes',
                 'description': 'Prompt usado pela IA para padronizar nomes de produtos'
             }, merge=True)
-            self.prompt_template = prompt
-            logger.info("Prompt salvo no Firestore (Automacoes/padronizador_nomes)")
+            self.base_prompt = prompt
+            logger.info("Prompt base salvo no Firestore (Automacoes/padronizador_nomes)")
             return True
         except Exception as e:
             logger.error(f"Erro ao salvar prompt no Firestore: {e}")
+            return False
+
+    def save_user_additions_to_firestore(self, additions: str) -> bool:
+        try:
+            doc_ref = self.db.collection('Automacoes').document('padronizador_nomes')
+            doc_ref.set({
+                'user_additions': additions,
+                'updated_at': datetime.now().isoformat(),
+            }, merge=True)
+            self.user_additions = additions
+            logger.info("Instrucoes adicionais salvas no Firestore (Automacoes/padronizador_nomes)")
+            return True
+        except Exception as e:
+            logger.error(f"Erro ao salvar instrucoes adicionais no Firestore: {e}")
             return False
 
     def log_message(self, message, level="info"):
@@ -273,7 +297,7 @@ MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambi
             return []
 
     def get_improved_product_name(self, product_name: str, custom_prompt: str = None) -> str:
-        prompt = custom_prompt if custom_prompt else self.prompt_template
+        prompt = custom_prompt if custom_prompt else self.get_full_prompt()
         full_prompt = prompt + self._prompt_suffix.format(produto_nome=product_name)
         max_retries = 5
         for attempt in range(max_retries):
@@ -314,7 +338,7 @@ MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambi
     def get_improved_names_batch(self, product_names: List[str], custom_prompt: str = None,
                                   image_urls: List[str] = None) -> List[str]:
         """Melhora N nomes em uma única chamada. Retorna lista de nomes melhorados na mesma ordem."""
-        prompt = custom_prompt if custom_prompt else self.prompt_template
+        prompt = custom_prompt if custom_prompt else self.get_full_prompt()
         header = (
             f"{prompt}\n\n"
             f"Melhore os nomes dos produtos abaixo. "

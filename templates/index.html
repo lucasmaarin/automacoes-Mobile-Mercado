@@ -1108,15 +1108,15 @@
                 <div class="prompt-hdr" id="promptHdr" onclick="Renamer.togglePrompt()">
                     <span style="display:flex;align-items:center;gap:7px">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.55"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                        Instruções da IA <span class="dot" id="promptDot" title="Prompt modificado"></span>
+                        Instruções adicionais <span class="dot" id="promptDot" title="Instruções modificadas"></span>
                     </span>
                     <span class="arr">&#9660;</span>
                 </div>
                 <div class="prompt-bd" id="promptBd">
-                    <textarea class="prompt-ta" id="promptTa" placeholder="Carregando..." oninput="Renamer.onPromptChange()" spellcheck="false"></textarea>
+                    <textarea class="prompt-ta" id="promptTa" placeholder="Exemplos de instruções adicionais:&#10;- Produtos importados: adicione &quot;(Importado)&quot; ao final&#10;- Para bebidas energéticas: inclua a quantidade de ml no nome&#10;- Marca &quot;FitFood&quot; → produto do tipo Barra de Proteína" oninput="Renamer.onPromptChange()" spellcheck="false" style="min-height:120px"></textarea>
+                    <p style="font-size:.78rem;color:var(--text-secondary);margin:6px 0 10px">Estas instruções são acréscimos às regras base da IA. Deixe vazio para usar apenas as regras padrão.</p>
                     <div class="prompt-ft">
                         <button class="btn btn-p" onclick="Renamer.savePrompt()">Salvar no Firestore</button>
-                        <button class="btn btn-ghost" onclick="Renamer.restorePrompt()">Restaurar Padrao</button>
                     </div>
                 </div>
             </div>
@@ -1477,6 +1477,24 @@
                 </div>
             </div>
 
+            <div class="card" style="margin-bottom:16px">
+                <div class="card-label">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.55"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    Prompt Base da IA
+                </div>
+                <p style="font-size:.82rem;color:var(--text-secondary);margin-bottom:14px">
+                    Regras completas usadas internamente pelo padronizador. Alterações afetam todos os padronizamentos.
+                </p>
+                <textarea id="basePromptTa" spellcheck="false" oninput="PromptAdmin.onBasePromptChange()"
+                    style="width:100%;min-height:360px;font-family:var(--mono);font-size:.8rem;background:var(--surface-alt);border:1px solid var(--border);border-radius:6px;padding:10px;resize:vertical;color:var(--text);box-sizing:border-box"
+                    placeholder="Carregando..."></textarea>
+                <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+                    <button class="btn btn-p" onclick="PromptAdmin.saveBasePrompt()">Salvar no Firestore</button>
+                    <button class="btn btn-ghost" onclick="PromptAdmin.restoreBasePrompt()">Restaurar Padrão</button>
+                    <span class="dot" id="basePromptDot" title="Prompt base modificado" style="margin-left:4px"></span>
+                </div>
+            </div>
+
             <div class="card">
                 <div class="card-label">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -1580,38 +1598,32 @@
 
     // === Renamer ===
     const Renamer = {
-        _loaded: false, _default: null, _saved: null, _selectedCount: 0,
+        _loaded: false, _saved: null, _selectedCount: 0,
 
         togglePrompt() {
             $('promptHdr').classList.toggle('open');
             $('promptBd').classList.toggle('open');
         },
 
-        async loadPrompt() {
+        async loadUserAdditions() {
             try {
-                const r = await (await fetch(API+'/api/renamer/prompt')).json();
-                if(r.success) { $('promptTa').value=r.prompt; this._default=r.default_prompt; this._saved=r.prompt; this._loaded=true; this.checkPromptDirty(); }
+                const r = await (await fetch(API+'/api/renamer/user-additions')).json();
+                if(r.success) { $('promptTa').value=r.user_additions||''; this._saved=r.user_additions||''; this._loaded=true; this.checkPromptDirty(); }
             } catch(e) { $('promptTa').value='Erro: '+e.message; }
         },
 
         onPromptChange() { this.checkPromptDirty(); },
 
         checkPromptDirty() {
-            const dirty = this._saved && $('promptTa').value.trim() !== this._saved.trim();
+            const dirty = $('promptTa').value.trim() !== (this._saved||'').trim();
             $('promptDot').classList.toggle('show', dirty);
         },
 
-        restorePrompt() {
-            if(this._default) { $('promptTa').value=this._default; this.checkPromptDirty(); toast('Prompt padrao restaurado','info'); }
-            else this.loadPrompt();
-        },
-
         async savePrompt() {
-            const p = $('promptTa').value.trim();
-            if(!p) { toast('Prompt vazio','error'); return; }
+            const p = $('promptTa').value;
             try {
-                const r = await (await fetch(API+'/api/renamer/prompt',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:p})})).json();
-                if(r.success) { this._saved=p; this.checkPromptDirty(); toast('Prompt salvo no Firestore','success'); }
+                const r = await (await fetch(API+'/api/renamer/user-additions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_additions:p})})).json();
+                if(r.success) { this._saved=p; this.checkPromptDirty(); toast('Instruções adicionais salvas no Firestore','success'); }
                 else toast('Erro: '+r.error,'error');
             } catch(e) { toast('Erro: '+e.message,'error'); }
         },
@@ -1685,7 +1697,6 @@
             const delay=parseFloat($('delay').value);
             const dryRun=$('dryRun').checked;
             const cats=[...document.querySelectorAll('.ccb:checked')].map(c=>c.value);
-            const prompt=$('promptTa').value.trim();
 
             if(!estId) { toast('Selecione o estabelecimento','warning'); return; }
             if(!cats.length) { toast('Selecione ao menos uma categoria','warning'); return; }
@@ -1697,7 +1708,6 @@
             const filterSubcatId = $('renSubcatSel').value || null;
             const useImages = $('renUseImages').checked;
             const payload = { estabelecimento_id:estId, delay, dry_run:dryRun, categories:cats, use_images:useImages };
-            if(prompt) payload.custom_prompt = prompt;
             if(filterSubcatId) payload.filter_subcategory_id = filterSubcatId;
             try {
                 const r = await fetch(API+'/api/renamer/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -1766,6 +1776,41 @@
                 else toast('Erro: '+r.error,'error');
             } catch(e){ toast('Erro: '+e.message,'error'); }
         }
+    };
+
+    // === PromptAdmin (prompt base — somente admin) ===
+    const PromptAdmin = {
+        _saved: null, _default: null,
+
+        async loadBasePrompt() {
+            try {
+                const r = await (await fetch(API+'/api/renamer/prompt')).json();
+                if(r.success) { $('basePromptTa').value=r.base_prompt||''; this._saved=r.base_prompt||''; this._default=r.default_base_prompt||''; this.checkDirty(); }
+            } catch(e) { if($('basePromptTa')) $('basePromptTa').value='Erro: '+e.message; }
+        },
+
+        onBasePromptChange() { this.checkDirty(); },
+
+        checkDirty() {
+            const dot=$('basePromptDot');
+            if(!dot) return;
+            const dirty = $('basePromptTa').value.trim() !== (this._saved||'').trim();
+            dot.classList.toggle('show', dirty);
+        },
+
+        async saveBasePrompt() {
+            const p = $('basePromptTa').value.trim();
+            if(!p) { toast('Prompt base vazio','error'); return; }
+            try {
+                const r = await (await fetch(API+'/api/renamer/prompt',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:p})})).json();
+                if(r.success) { this._saved=p; this.checkDirty(); toast('Prompt base salvo no Firestore','success'); }
+                else toast('Erro: '+r.error,'error');
+            } catch(e) { toast('Erro: '+e.message,'error'); }
+        },
+
+        restoreBasePrompt() {
+            if(this._default) { $('basePromptTa').value=this._default; this.checkDirty(); toast('Prompt base restaurado (não salvo)','info'); }
+        },
     };
 
     // === JSON syntax highlight ===
@@ -2450,7 +2495,8 @@
         Settings.initTheme();  // aplica tema via localStorage (sem piscar)
         initWS();
         fetch(API+'/api/stats/daily').then(r=>r.json()).then(d=>{ if(d.today) updateDailyStats(d.today); }).catch(()=>{});
-        Renamer.loadPrompt();
+        Renamer.loadUserAdditions();
+        PromptAdmin.loadBasePrompt();
         Cat.loadPrompt();
         // Skeleton some quando: Settings.load() (tema Firestore) + socket connect
         Settings.load();        // _skelDone() chamado no finally
