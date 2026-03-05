@@ -99,6 +99,10 @@ zerograu_user.json
 scripts/*.py
 anotacoes.txt
 
+restore_names_csv.py
+
+produtos.csv
+
 
 
 

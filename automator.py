@@ -2,6 +2,7 @@ from typing import List, Dict, Any
 from datetime import datetime
 import threading
 import time
+import re
 from concurrent.futures import ThreadPoolExecutor
 
 import openai as _openai_module
@@ -9,6 +10,14 @@ from extensions import openai_client, socketio, _is_quota_error, emit_quota_exce
 from utils import to_json_safe, firestore_default, safe_sample, record_daily_usage, automation_state, undo_store, _undo_lock
 from utils import get_today_stats
 from config import logger
+
+def _parse_rate_limit_wait(error: Exception, default: float = 5.0) -> float:
+    """Extrai o tempo de espera exato da mensagem de erro 429 da OpenAI."""
+    m = re.search(r'try again in (\d+\.?\d*)s', str(error), re.IGNORECASE)
+    if m:
+        return float(m.group(1)) + 0.5
+    return default
+
 
 class FirestoreProductAutomator:
     def __init__(self, db_client):
@@ -222,8 +231,16 @@ MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambi
         timestamp = datetime.now().strftime("%H:%M:%S")
         log_entry = {'timestamp': timestamp, 'message': message, 'level': level}
         automation_state['logs'].append(log_entry)
-        if len(automation_state['logs']) > 100:
-            automation_state['logs'] = automation_state['logs'][-100:]
+        if len(automation_state['logs']) > 500:
+            automation_state['logs'] = automation_state['logs'][-500:]
+        if level == 'error':
+            automation_state['error_logs'].append(log_entry)
+            if len(automation_state['error_logs']) > 200:
+                automation_state['error_logs'] = automation_state['error_logs'][-200:]
+            try:
+                socketio.emit('renamer_error_log_update', log_entry)
+            except Exception:
+                pass
         try:
             socketio.emit('renamer_log_update', log_entry)
         except Exception:
@@ -299,7 +316,7 @@ MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambi
     def get_improved_product_name(self, product_name: str, custom_prompt: str = None) -> str:
         prompt = custom_prompt if custom_prompt else self.get_full_prompt()
         full_prompt = prompt + self._prompt_suffix.format(produto_nome=product_name)
-        max_retries = 5
+        max_retries = 8
         for attempt in range(max_retries):
             try:
                 response = openai_client.chat.completions.create(
@@ -313,7 +330,7 @@ MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambi
                     self.log_message("ERRO: Créditos da API OpenAI esgotados.", "error")
                     emit_quota_exceeded()
                     raise
-                wait = 0.5 * (2 ** attempt)  # 0.5s, 1s, 2s, 4s, 8s
+                wait = _parse_rate_limit_wait(e)
                 self.log_message(f"Rate limit atingido, aguardando {wait:.1f}s (tentativa {attempt + 1}/{max_retries})...", "warning")
                 time.sleep(wait)
                 if attempt == max_retries - 1:
@@ -359,7 +376,7 @@ MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambi
         else:
             msg_content = text_only_content
         results = list(product_names)  # fallback: mantém o original
-        max_retries = 5
+        max_retries = 8
         for attempt in range(max_retries):
             try:
                 response = openai_client.chat.completions.create(
@@ -373,7 +390,7 @@ MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambi
                     self.log_message("ERRO: Créditos da API OpenAI esgotados.", "error")
                     emit_quota_exceeded()
                     raise
-                wait = 0.5 * (2 ** attempt)
+                wait = _parse_rate_limit_wait(e)
                 self.log_message(f"Rate limit atingido, aguardando {wait:.1f}s (tentativa {attempt + 1}/{max_retries})...", "warning")
                 time.sleep(wait)
                 if attempt == max_retries - 1:
@@ -454,7 +471,7 @@ MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambi
                                 delay: float, dry_run: bool, custom_prompt: str,
                                 use_images: bool = False):
         total = len(products)
-        BATCH_SIZE = 20
+        BATCH_SIZE = 30
         batches = [products[s:s + BATCH_SIZE] for s in range(0, total, BATCH_SIZE)]
 
         def _process_batch(args):
@@ -512,7 +529,7 @@ MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambi
                         automation_state['progress']['estimated_cost'] = self.estimated_cost
                     self.update_progress()
 
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        with ThreadPoolExecutor(max_workers=1) as executor:
             list(executor.map(_process_batch, ((i * BATCH_SIZE, b) for i, b in enumerate(batches))))
 
     def run_automation(self, estabelecimento_id: str, categories: List[str],
@@ -522,7 +539,6 @@ MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambi
             self.tokens_used = 0
             self.estimated_cost = 0
             automation_state['running'] = True
-            automation_state['logs'] = []
             automation_state['current_product'] = None
             automation_state['progress'] = {
                 'total': 0, 'processed': 0, 'updated': 0,
@@ -530,13 +546,16 @@ MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambi
             }
             with _undo_lock:
                 undo_store['renamer'].clear()
+            # Adiciona separador de execucao no log (nao limpa)
+            sep = {'timestamp': datetime.now().strftime("%H:%M:%S"), 'message': '─' * 40, 'level': 'separator'}
+            automation_state['logs'].append(sep)
             try:
+                socketio.emit('renamer_log_update', sep)
                 socketio.emit('renamer_status_update', {
                     'running': True,
                     'progress': automation_state['progress'],
                     'current_product': None,
                 })
-                socketio.emit('renamer_logs_update', {'logs': []})
             except Exception:
                 pass
 
@@ -562,7 +581,7 @@ MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambi
                 'tokens_used': 0, 'estimated_cost': 0.0,
             }
             self.update_progress()
-            self.log_message(f"Processando {total} produtos em lotes de 20 (2 paralelos)", "info")
+            self.log_message(f"Processando {total} produtos em lotes de 30", "info")
 
             self.process_products_batch(products, estabelecimento_id, delay, dry_run, custom_prompt, use_images)
 

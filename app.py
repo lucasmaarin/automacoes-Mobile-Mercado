@@ -1007,9 +1007,9 @@ class ProductCategorizerAgent:
         )
         prompt = (
             f"Produto: \"{product_name}\"\n\n"
-            f"SUBCATEGORIAS (id|nome|categoria):\n{subs_text}\n\n"
-            f"Responda APENAS com o id da subcategoria mais adequada para o produto.\n"
-            f"Sem explicações."
+            f"SUBCATEGORIAS VÁLIDAS (id|nome|categoria):\n{subs_text}\n\n"
+            f"Responda APENAS com o id exato (da lista acima) da subcategoria mais adequada.\n"
+            f"Não invente IDs. Sem explicações."
         )
         try:
             raw = self._call_openai(prompt, max_tokens=60)
@@ -1028,7 +1028,9 @@ class ProductCategorizerAgent:
         "\n\n---\n"
         "Para esta tarefa de batch, responda SOMENTE com um objeto JSON:\n"
         "{\"1\": \"subcategoria_id\", \"2\": \"subcategoria_id\", ...}\n"
-        "A chave é o número do produto (começando em 1). Sem markdown, sem explicações."
+        "A chave é o número do produto (começando em 1). Sem markdown, sem explicações.\n"
+        "IMPORTANTE: Use EXCLUSIVAMENTE os IDs exatos da lista de subcategorias fornecida pelo usuário. "
+        "NÃO invente IDs, NÃO use IDs de memória ou conhecimento anterior."
     )
 
     def get_categories_batch(self, product_names, categories, subcategories, image_urls=None):
@@ -1040,7 +1042,8 @@ class ProductCategorizerAgent:
             for s in subcategories
         )
         header = (
-            f"SUBCATEGORIAS (id|nome|categoria):\n{subs_text}\n\n"
+            f"SUBCATEGORIAS VÁLIDAS (id|nome|categoria):\n{subs_text}\n\n"
+            f"Use SOMENTE os IDs exatos da lista acima. Não invente IDs.\n"
             f"Para cada produto abaixo, responda SOMENTE com JSON:\n"
             f"{{\"1\": \"subcategoria_id\", \"2\": \"subcategoria_id\", ...}}\n"
             f"A chave é o número do produto. Sem markdown, sem explicações.\n\n"
@@ -1617,7 +1620,7 @@ class ProductCategorizerAgent:
             BATCH_SIZE = 20
             batches = [products[s:s + BATCH_SIZE] for s in range(0, total, BATCH_SIZE)]
             self.log_message(
-                f"Processando {total} produtos em {len(batches)} lotes de {BATCH_SIZE} (2 paralelos)", "info"
+                f"Processando {total} produtos em {len(batches)} lotes de {BATCH_SIZE}", "info"
             )
 
             def _tick_product(ok):
@@ -1647,6 +1650,14 @@ class ProductCategorizerAgent:
                     pid, pname = product['id'], product['name']
                     i = batch_start + idx + 1
                     self.log_message(f"[{i}/{total}] {pname}", "info")
+                    # Retry individual quando o batch falhou para este produto
+                    if not category_id or not subcategory_id:
+                        try:
+                            category_id, subcategory_id = self.get_category_and_subcategory(
+                                pname, categories, subcategories
+                            )
+                        except Exception:
+                            category_id, subcategory_id = None, None
                     with self._lock:
                         if not category_id or not subcategory_id:
                             if outros_cat_id:
@@ -1676,7 +1687,7 @@ class ProductCategorizerAgent:
                         categorizer_state['progress']['estimated_cost'] = self.estimated_cost
                     self.update_progress()
 
-            with ThreadPoolExecutor(max_workers=2) as executor:
+            with ThreadPoolExecutor(max_workers=1) as executor:
                 list(executor.map(_cat_batch, ((i * BATCH_SIZE, b) for i, b in enumerate(batches))))
 
             prog = categorizer_state['progress']
@@ -2218,6 +2229,17 @@ def save_user_additions():
             return jsonify({'error': 'Erro ao salvar no Firestore'}), 500
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/renamer/error-logs', methods=['GET'])
+def get_renamer_error_logs():
+    return jsonify({'success': True, 'error_logs': automation_state.get('error_logs', [])})
+
+
+@app.route('/api/renamer/error-logs/clear', methods=['POST'])
+def clear_renamer_error_logs():
+    automation_state['error_logs'] = []
+    return jsonify({'success': True})
 
 
 @app.route('/api/renamer/start', methods=['POST'])

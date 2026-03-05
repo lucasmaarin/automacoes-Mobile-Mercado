@@ -497,6 +497,7 @@
         .log-l.success { background: var(--green-light); color: #065f46; }
         .log-l.error { background: var(--red-light); color: #991b1b; }
         .log-l.warning { background: var(--orange-light); color: #92400e; }
+        .log-l.separator { background: none; color: var(--muted); text-align: center; padding: 2px 0; font-size: .65rem; letter-spacing:.04em; }
 
         /* === Explorer === */
         .json-out {
@@ -1147,6 +1148,13 @@
                     </div>
                     <div class="log-box" id="renamerLog"><div class="log-l info">Aguardando...</div></div>
                 </div>
+                <div class="log-wrap" id="errorLogWrap" style="display:none">
+                    <div class="log-header">
+                        <span class="log-title" style="color:var(--red)">&#9888; Log de erros (<span id="errorLogCount">0</span>)</span>
+                        <button class="log-clear" onclick="Renamer.clearErrorLog()">Limpar erros</button>
+                    </div>
+                    <div class="log-box" id="errorLog" style="max-height:160px"></div>
+                </div>
                 <div id="renUndo" style="display:none;margin-top:10px;text-align:center">
                     <button class="btn btn-ghost" style="color:var(--orange);border-color:var(--orange)" onclick="Renamer.undo()">
                         &#8635; Desfazer ultima execucao (<span id="renUndoCount">0</span> produtos)
@@ -1569,7 +1577,8 @@
         socket.on('renamer_log_update', d => addLog('renamerLog', d.message, d.level));
         socket.on('renamer_progress_update', d => Renamer.progress(d.progress, d.current_product));
         socket.on('renamer_status_update', d => { isRunning=d.running; Renamer.progress(d.progress, d.current_product); Renamer.btnState(); });
-        socket.on('renamer_logs_update', d => { $('renamerLog').innerHTML = d.logs?.length ? '' : '<div class="log-l info">Aguardando...</div>'; (d.logs||[]).forEach(l=>addLog('renamerLog',l.message,l.level)); });
+        socket.on('renamer_logs_update', d => { if(d.logs?.length){ $('renamerLog').innerHTML=''; d.logs.forEach(l=>addLog('renamerLog',l.message,l.level)); } });
+        socket.on('renamer_error_log_update', d => Renamer.addErrorLog(d));
         socket.on('explorer_log_update', d => addLog('explorerLog', d.message, d.level));
         socket.on('explorer_logs_update', d => { if(d.logs?.length){ $('explorerLog').innerHTML=''; d.logs.forEach(l=>addLog('explorerLog',l.message,l.level)); }});
         socket.on('categorizer_log_update', d => addLog('catLog', d.message, d.level));
@@ -1711,7 +1720,7 @@
             if(filterSubcatId) payload.filter_subcategory_id = filterSubcatId;
             try {
                 const r = await fetch(API+'/api/renamer/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-                if(r.ok) { isRunning=true; $('progressArea').classList.add('active'); $('renamerLog').innerHTML=''; toast('Automacao iniciada'+(dryRun?' (Dry Run)':''),'success'); }
+                if(r.ok) { isRunning=true; $('progressArea').classList.add('active'); toast('Automacao iniciada'+(dryRun?' (Dry Run)':''),'success'); }
                 else { const e=await r.json(); toast('Erro: '+e.error,'error'); }
             } catch(e) { toast('Erro: '+e.message,'error'); }
             btn.disabled=false; this.btnState();
@@ -1775,6 +1784,38 @@
                 if(r.success){ toast('Revertidos '+r.reverted+' produtos'+(r.errors?' ('+r.errors+' erros)':''),'success'); $('renUndo').style.display='none'; }
                 else toast('Erro: '+r.error,'error');
             } catch(e){ toast('Erro: '+e.message,'error'); }
+        },
+
+        addErrorLog(entry) {
+            const wrap=$('errorLogWrap'), box=$('errorLog'), cnt=$('errorLogCount');
+            if(!box) return;
+            wrap.style.display='';
+            const d=document.createElement('div');
+            d.className='log-l error';
+            d.textContent=(entry.timestamp||'')+' '+entry.message;
+            box.appendChild(d); box.scrollTop=box.scrollHeight;
+            cnt.textContent=box.children.length;
+        },
+
+        async loadErrorLog() {
+            try {
+                const r = await (await fetch(API+'/api/renamer/error-logs')).json();
+                if(r.success && r.error_logs?.length) {
+                    $('errorLogWrap').style.display='';
+                    $('errorLog').innerHTML='';
+                    r.error_logs.forEach(e => this.addErrorLog(e));
+                }
+            } catch(e) {}
+        },
+
+        async clearErrorLog() {
+            try {
+                await fetch(API+'/api/renamer/error-logs/clear',{method:'POST'});
+                $('errorLog').innerHTML='';
+                $('errorLogCount').textContent='0';
+                $('errorLogWrap').style.display='none';
+                toast('Log de erros limpo','info');
+            } catch(e) { toast('Erro: '+e.message,'error'); }
         }
     };
 
@@ -2496,6 +2537,7 @@
         initWS();
         fetch(API+'/api/stats/daily').then(r=>r.json()).then(d=>{ if(d.today) updateDailyStats(d.today); }).catch(()=>{});
         Renamer.loadUserAdditions();
+        Renamer.loadErrorLog();
         PromptAdmin.loadBasePrompt();
         Cat.loadPrompt();
         // Skeleton some quando: Settings.load() (tema Firestore) + socket connect

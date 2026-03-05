@@ -163,7 +163,8 @@ automation_state = {
         'tokens_used': 0, 'estimated_cost': 0.0
     },
     'current_product': None,
-    'logs': []
+    'logs': [],
+    'error_logs': []
 }
 
 explorer_state = {
