@@ -195,6 +195,16 @@ categorizer_targeted_state = {
     'logs': []
 }
 
+tagger_state = {
+    'running': False,
+    'progress': {
+        'total': 0, 'processed': 0, 'updated': 0,
+        'skipped': 0, 'errors': 0, 'tokens_used': 0, 'estimated_cost': 0.0
+    },
+    'current_product': None,
+    'logs': []
+}
+
 # Undo store and lock
 undo_store = {
     'renamer': [],

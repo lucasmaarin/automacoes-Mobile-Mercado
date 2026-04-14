@@ -1015,6 +1015,10 @@
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
                 Categorizador de Produtos
             </button>
+            <button class="tab-btn" onclick="switchTab('tagger')">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none"/></svg>
+                Gerador de Tags
+            </button>
             <button class="tab-btn" onclick="switchTab('settings')">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                 Configurações
@@ -1398,6 +1402,105 @@
                 </div>
             </div>
         </div>
+        <!-- TAB: Tagger -->
+        <div class="tab-panel" id="tab-tagger">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+                <span class="agent-help-btn" onclick="toggleHelp('taggerHelp')" title="Como funciona?">?</span>
+            </div>
+            <div class="agent-info" id="taggerHelp">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <div>
+                    <strong>Gerador de Tags</strong>
+                    Usa IA para gerar tags automáticas para cada produto com base no nome (marca, tipo, atributos) e, opcionalmente, na imagem (tipo de embalagem).<br>
+                    <strong>Fluxo:</strong> selecione o estabelecimento → filtre categorias (opcional) → clique em <em>Iniciar</em>.<br>
+                    Ative <em>Sobrescrever tags existentes</em> para atualizar produtos que já têm tags. Ative <em>Analisar imagens</em> para incluir o tipo de embalagem nas tags.
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-label">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+                    Configurações
+                </div>
+                <div class="field">
+                    <label>Estabelecimento</label>
+                    <select id="tagEstSel" class="est-sel" onchange="handleEstChange('tagEstSel','tagEstCustom'); $('tagCatGrid').innerHTML=''; $('tagCatGrid').className=''">
+                        <option value="" disabled>Carregando...</option>
+                    </select>
+                    <input type="text" id="tagEstCustom" class="est-custom" style="display:none" placeholder="ID personalizado" spellcheck="false">
+                </div>
+                <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+                    <label class="toggle-sw">
+                        <input type="checkbox" id="tagDryRun">
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                        <span>Modo de teste (Dry Run)</span>
+                    </label>
+                    <label class="toggle-sw">
+                        <input type="checkbox" id="tagUseImages">
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                        <span>Analisar imagens das embalagens</span>
+                    </label>
+                    <label class="toggle-sw">
+                        <input type="checkbox" id="tagOverwrite">
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                        <span>Sobrescrever tags existentes</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                    <div class="card-label" style="margin-bottom:0">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                        Filtrar por categoria <span style="font-size:.75rem;font-weight:400;color:var(--muted)">(opcional)</span>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-p" id="btnLoadTagCats" onclick="Tagger.loadCategories()" style="display:flex;align-items:center;gap:5px">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.8"/></svg>
+                            Carregar
+                        </button>
+                        <button class="btn btn-ghost" onclick="Tagger.selectAll(true)">Todas</button>
+                        <button class="btn btn-ghost" onclick="Tagger.selectAll(false)">Limpar</button>
+                    </div>
+                </div>
+                <div id="tagCatGrid">
+                    <div class="empty-state">
+                        <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                        <b>Nenhuma categoria carregada</b>
+                        <span>Deixe vazio para processar todos os produtos,<br>ou carregue para filtrar por categoria</span>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn btn-p btn-w" id="tagBtnStart" onclick="Tagger.toggle()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+                Iniciar
+            </button>
+
+            <div class="progress-area" id="tagProgressArea">
+                <div class="cur-item" id="tagCurItem"><div id="tagCurInfo"></div></div>
+                <div class="pbar-wrap"><div class="pbar-fill" id="tagPbar"></div><div class="pbar-text" id="tagPtext">0%</div></div>
+                <div class="tokens-bar">
+                    <span>Tokens: <strong id="tagTokensVal">0</strong></span>
+                    <span>Custo: <strong id="tagCostVal">$0.00</strong></span>
+                </div>
+                <div class="stats-row">
+                    <div class="stat"><div class="stat-v" id="tagSTotal">0</div><div class="stat-l">Total</div></div>
+                    <div class="stat"><div class="stat-v" id="tagSProc">0</div><div class="stat-l">Processados</div></div>
+                    <div class="stat"><div class="stat-v green" id="tagSUpd">0</div><div class="stat-l">Atualizados</div></div>
+                    <div class="stat"><div class="stat-v" id="tagSSkip">0</div><div class="stat-l">Ignorados</div></div>
+                    <div class="stat"><div class="stat-v red" id="tagSErr">0</div><div class="stat-l">Erros</div></div>
+                </div>
+                <div class="log-wrap">
+                    <div class="log-header">
+                        <span class="log-title">Log de execução</span>
+                        <button class="log-clear" onclick="$('taggerLog').innerHTML=''">Limpar</button>
+                    </div>
+                    <div class="log-box" id="taggerLog"><div class="log-l info">Aguardando...</div></div>
+                </div>
+            </div>
+        </div>
+
         <!-- TAB: Settings -->
         <div class="tab-panel" id="tab-settings">
             <div class="card" style="margin-bottom:16px">
@@ -1534,7 +1637,7 @@
     }
 
     // === Tabs ===
-    const TAB_ORDER = ['renamer', 'explorer', 'categorizer', 'settings'];
+    const TAB_ORDER = ['renamer', 'explorer', 'categorizer', 'tagger', 'settings'];
     function switchTab(n) {
         const idx = TAB_ORDER.indexOf(n);
         document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', i===idx));
@@ -1589,6 +1692,10 @@
         socket.on('categorizer_targeted_progress_update', () => {});
         socket.on('categorizer_targeted_status_update', () => {});
         socket.on('categorizer_targeted_logs_update', () => {});
+        socket.on('tagger_log_update', d => addLog('taggerLog', d.message, d.level));
+        socket.on('tagger_progress_update', d => Tagger.progress(d.progress, d.current_product));
+        socket.on('tagger_status_update', d => { Tagger._running = d.running; Tagger.progress(d.progress, d.current_product); Tagger.btnState(d.running); if(d.running || (d.progress && d.progress.total > 0)) $('tagProgressArea').classList.add('active'); });
+        socket.on('tagger_logs_update', d => { $('taggerLog').innerHTML = d.logs?.length ? '' : '<div class="log-l info">Aguardando...</div>'; (d.logs||[]).forEach(l=>addLog('taggerLog',l.message,l.level)); });
         socket.on('daily_stats_update', d => updateDailyStats(d));
         socket.on('openai_quota_exceeded', d => {
             const banner = document.getElementById('quotaBanner');
@@ -2126,6 +2233,107 @@
         }
     };
 
+    // === Tagger ===
+    const Tagger = {
+        _running: false,
+
+        btnState(running) {
+            const btn = $('tagBtnStart');
+            if (!btn) return;
+            this._running = running !== undefined ? running : this._running;
+            if (this._running) {
+                btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Parar';
+                btn.classList.add('btn-danger');
+            } else {
+                btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Iniciar';
+                btn.classList.remove('btn-danger');
+            }
+        },
+
+        progress(p, cur) {
+            if (!p) return;
+            const pct = p.total > 0 ? Math.round(p.processed / p.total * 100) : 0;
+            const pbar = $('tagPbar'); if (pbar) pbar.style.width = pct + '%';
+            const ptxt = $('tagPtext'); if (ptxt) ptxt.textContent = pct + '%';
+            const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+            set('tagSTotal', p.total || 0);
+            set('tagSProc', p.processed || 0);
+            set('tagSUpd', p.updated || 0);
+            set('tagSSkip', p.skipped || 0);
+            set('tagSErr', p.errors || 0);
+            set('tagTokensVal', (p.tokens_used || 0).toLocaleString());
+            set('tagCostVal', '$' + (p.estimated_cost || 0).toFixed(4));
+            const ci = $('tagCurInfo'); if (ci) ci.textContent = cur ? cur : '';
+        },
+
+        async loadCategories() {
+            const estId = getEstId('tagEstSel', 'tagEstCustom');
+            if (!estId) { toast('Selecione o estabelecimento', 'error'); return; }
+            const btn = $('btnLoadTagCats');
+            const grid = $('tagCatGrid');
+            btn.disabled = true; btn.textContent = 'Carregando...';
+            try {
+                const r = await (await fetch(API + '/api/tagger/categories?estabelecimento_id=' + encodeURIComponent(estId))).json();
+                if (r.categories && r.categories.length) {
+                    grid.innerHTML = ''; grid.className = 'cat-grid';
+                    r.categories.forEach(c => {
+                        const id = 'tc-' + c.id.replace(/\s/g, '-');
+                        const item = document.createElement('div'); item.className = 'cat-item';
+                        item.innerHTML = '<input type="checkbox" class="tccb" id="' + id + '" value="' + c.id + '" onchange="Tagger.updateCount()"><label for="' + id + '">' + c.name + '</label>';
+                        item.onclick = e => { if (e.target.tagName !== 'INPUT') { const cb = item.querySelector('input'); cb.checked = !cb.checked; Tagger.updateCount(); }};
+                        grid.appendChild(item);
+                    });
+                    this.updateCount();
+                    toast(r.categories.length + ' categorias carregadas', 'success');
+                } else {
+                    grid.innerHTML = '<div class="empty-state"><b>Nenhuma categoria encontrada</b></div>'; grid.className = '';
+                }
+            } catch(e) { grid.innerHTML = '<div class="empty-state"><b>Erro ao carregar</b></div>'; grid.className = ''; toast('Erro: ' + e.message, 'error'); }
+            btn.disabled = false;
+            btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.8"/></svg> Carregar';
+        },
+
+        updateCount() {
+            document.querySelectorAll('#tagCatGrid .cat-item').forEach(item => {
+                item.classList.toggle('checked', item.querySelector('input').checked);
+            });
+        },
+
+        selectAll(val) {
+            $('tagCatGrid').querySelectorAll('.tccb').forEach(c => { c.checked = val; });
+            this.updateCount();
+        },
+
+        getSelectedCategories() {
+            return [...$('tagCatGrid').querySelectorAll('.tccb:checked')].map(c => c.value);
+        },
+
+        async toggle() {
+            if (this._running) {
+                try { await fetch(API + '/api/tagger/stop', {method: 'POST'}); toast('Parada solicitada', 'warning'); } catch(e) { toast('Erro: ' + e.message, 'error'); }
+                return;
+            }
+            const estId = getEstId('tagEstSel', 'tagEstCustom');
+            if (!estId) { toast('Selecione o estabelecimento', 'error'); return; }
+            const payload = {
+                estabelecimento_id: estId,
+                dry_run: $('tagDryRun').checked,
+                use_images: $('tagUseImages').checked,
+                overwrite: $('tagOverwrite').checked,
+                categories: this.getSelectedCategories(),
+                delay: 0
+            };
+            try {
+                const r = await (await fetch(API + '/api/tagger/start', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)})).json();
+                if (r.error) { toast(r.error, 'error'); return; }
+                this._running = true;
+                this.btnState(true);
+                $('tagProgressArea').classList.add('active');
+                addLog('taggerLog', 'Tagger iniciado...', 'info');
+            } catch(e) { toast('Erro: ' + e.message, 'error'); }
+        }
+    };
+
     // Close suggestions on click outside
     document.addEventListener('click', e => { if(!e.target.closest('.field-rel')) $('aSugg').style.display='none'; });
 
@@ -2350,7 +2558,7 @@
         },
 
         _populate() {
-            const SEL_IDS = ['renEstSel', 'catEstSel', 'catDirEstSel', 'expEstSel'];
+            const SEL_IDS = ['renEstSel', 'catEstSel', 'catDirEstSel', 'expEstSel', 'tagEstSel'];
             SEL_IDS.forEach(selId => {
                 const sel = document.getElementById(selId);
                 if (!sel) return;

@@ -52,7 +52,7 @@ from config import logger, SECRET_KEY
 from extensions import init_extensions, init_firebase, get_db, _reload_openai_client, _is_quota_error, emit_quota_exceeded
 from utils import (to_json_safe, firestore_default, safe_sample, get_today_stats, record_daily_usage,
                    automation_state, explorer_state, categorizer_state, categorizer_targeted_state,
-                   undo_store, _undo_lock)
+                   tagger_state, undo_store, _undo_lock)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY
@@ -226,6 +226,7 @@ _load_daily_stats()
 
 
 from automator import FirestoreProductAutomator
+from tagger import ProductTagger
 
 
 # ============================================================
@@ -1718,16 +1719,18 @@ automator = None
 advanced_explorer = None
 simple_explorer = None
 categorizer = None
+tagger = None
 
 
 def init_all():
-    global automator, advanced_explorer, simple_explorer, categorizer
+    global automator, advanced_explorer, simple_explorer, categorizer, tagger
     try:
         init_firebase()
         automator = FirestoreProductAutomator(db)
         advanced_explorer = FirestoreStructureExplorer(db)
         simple_explorer = FirestoreSimpleExplorer(db)
         categorizer = ProductCategorizerAgent(db)
+        tagger = ProductTagger(db)
         # Carrega credenciais de admin no cache
         try:
             _load_admin_creds()
@@ -2741,6 +2744,92 @@ def categorizer_targeted_logs_route():
 
 
 # ============================================================
+# Rotas: Tagger de Produtos
+# ============================================================
+
+@app.route('/api/tagger/categories', methods=['GET'])
+def tagger_categories():
+    global tagger
+    if not tagger:
+        return jsonify({'error': 'Tagger nao inicializado'}), 500
+    est_id = request.args.get('estabelecimento_id', '').strip()
+    if not est_id:
+        return jsonify({'error': 'estabelecimento_id obrigatorio'}), 400
+    try:
+        cats_ref = (db.collection('estabelecimentos')
+                    .document(est_id)
+                    .collection('ProductCategories')
+                    .stream())
+        categories = []
+        for doc in cats_ref:
+            data = doc.to_dict() or {}
+            categories.append({'id': doc.id, 'name': data.get('name', doc.id)})
+        categories.sort(key=lambda x: x['name'])
+        return jsonify({'categories': categories})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/tagger/start', methods=['POST'])
+def tagger_start():
+    global tagger
+    if not tagger:
+        return jsonify({'error': 'Tagger nao inicializado'}), 500
+    if tagger_state['running']:
+        return jsonify({'error': 'Tagger ja esta em execucao'}), 400
+    try:
+        data = request.json or {}
+        estabelecimento_id = data.get('estabelecimento_id', '').strip()
+        if not estabelecimento_id:
+            return jsonify({'error': 'estabelecimento_id obrigatorio'}), 400
+        delay = float(data.get('delay', 0))
+        dry_run = bool(data.get('dry_run', False))
+        use_images = bool(data.get('use_images', False))
+        overwrite = bool(data.get('overwrite', False))
+        categories = data.get('categories', [])
+
+        def run_thread():
+            tagger.run_tagging(estabelecimento_id, categories, delay, dry_run, use_images, overwrite)
+
+        t = Thread(target=run_thread)
+        t.daemon = True
+        t.start()
+        return jsonify({'success': True, 'message': 'Tagger iniciado'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/tagger/stop', methods=['POST'])
+def tagger_stop():
+    if not tagger_state['running']:
+        return jsonify({'error': 'Nenhum tagger em execucao'}), 400
+    tagger_state['running'] = False
+    try:
+        socketio.emit('tagger_status_update', {
+            'running': False,
+            'progress': tagger_state['progress'],
+            'current_product': tagger_state['current_product']
+        })
+    except Exception:
+        pass
+    return jsonify({'success': True, 'message': 'Tagger interrompido'})
+
+
+@app.route('/api/tagger/status', methods=['GET'])
+def tagger_status():
+    return jsonify({
+        'running': tagger_state['running'],
+        'progress': tagger_state['progress'],
+        'current_product': tagger_state['current_product']
+    })
+
+
+@app.route('/api/tagger/logs', methods=['GET'])
+def tagger_logs():
+    return jsonify({'logs': tagger_state['logs']})
+
+
+# ============================================================
 # Rotas: Estatísticas diárias
 # ============================================================
 @app.route('/api/stats/daily', methods=['GET'])
@@ -2796,6 +2885,19 @@ def handle_connect():
         'progress': categorizer_targeted_state['progress'],
         'current_product': categorizer_targeted_state['current_product']
     })
+    if not tagger_state['running']:
+        tagger_state['progress'] = {
+            'total': 0, 'processed': 0, 'updated': 0,
+            'skipped': 0, 'errors': 0, 'tokens_used': 0, 'estimated_cost': 0.0
+        }
+        tagger_state['current_product'] = None
+        tagger_state['logs'] = []
+    emit('tagger_status_update', {
+        'running': tagger_state['running'],
+        'progress': tagger_state['progress'],
+        'current_product': tagger_state['current_product']
+    })
+    emit('tagger_logs_update', {'logs': tagger_state['logs']})
     emit('renamer_logs_update', {'logs': automation_state['logs']})
     emit('explorer_logs_update', {'logs': explorer_state['logs']})
     emit('categorizer_logs_update', {'logs': categorizer_state['logs']})
