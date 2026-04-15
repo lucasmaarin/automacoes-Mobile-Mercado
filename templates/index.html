@@ -1773,16 +1773,20 @@
         async loadSubcategories() {
             const estId = getEstId('renEstSel','renEstCustom');
             if(!estId) { toast('Selecione o estabelecimento','warning'); return; }
+            const checkedCats = [...document.querySelectorAll('.ccb:checked')].map(c => c.value);
+            if(checkedCats.length === 0) { toast('Selecione ao menos uma categoria antes de carregar subcategorias','warning'); return; }
+            if(checkedCats.length > 1) { toast('Selecione apenas uma categoria para filtrar subcategorias','warning'); return; }
             const btn = $('renLoadSubcatsBtn'), sel = $('renSubcatSel');
             btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Carregando';
             try {
-                const r = await (await fetch(API+'/api/subcategories?estabelecimento_id='+encodeURIComponent(estId))).json();
+                const url = API+'/api/subcategories?estabelecimento_id='+encodeURIComponent(estId)+'&category_id='+encodeURIComponent(checkedCats[0]);
+                const r = await (await fetch(url)).json();
                 if(r.success) {
                     const prev = sel.value;
                     sel.innerHTML = '<option value="">-- Todas as subcategorias --</option>';
                     r.subcategories.forEach(s => {
                         const o = document.createElement('option');
-                        o.value = s.id; o.textContent = s.name + (s.categoryId ? ' ('+s.categoryId+')' : '');
+                        o.value = s.id; o.textContent = s.name;
                         sel.appendChild(o);
                     });
                     if(prev) sel.value = prev;

@@ -112,6 +112,7 @@ Abreviacoes para expandir:
 REGRA OBRIGATORIA: O nome que voce retornar DEVE ser diferente e melhor que o original.
 
 Palavras ou abreviacoes para retirar completamente do nome:
+- COND (abreviacao de Condimento — retirar sempre)
 - PT
 - TP
 - VDO

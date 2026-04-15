@@ -35,11 +35,13 @@ class ProductTagger:
         "Gere tags relevantes para produtos com base no nome e, quando disponível, na imagem.\n\n"
         "Regras:\n"
         "- Gere de 3 a 8 tags por produto\n"
-        "- Tags do nome: marca, tipo do produto, sabor/variante, atributos especiais "
-        "(ex: ZeroLactose, Integral, Light, Diet, Proteina)\n"
+        "- SEMPRE inclua a marca do produto como tag quando identificável no nome "
+        "(ex: Nestlé → #Nestle, Coca-Cola → #CocaCola, Piracanjuba → #Piracanjuba)\n"
+        "- Tags do nome: marca (obrigatório), tipo do produto, sabor/variante, atributos especiais "
+        "(ex: #ZeroLactose, #Integral, #Light, #Diet, #Proteina)\n"
         "- Tags da imagem (se fornecida): APENAS o tipo de embalagem identificado "
-        "(ex: Garrafa, Lata, Caixinha, Sache, Pote, Copo, Bandeja, Bag, Vidro, TetraPak)\n"
-        "- Cada tag começa com # e usa PascalCase sem espaços (ex: #ZeroLactose, #TetraPak)\n"
+        "(ex: #Garrafa, #Lata, #Caixinha, #Sache, #Pote, #Copo, #Bandeja, #Bag, #Vidro, #TetraPak)\n"
+        "- Cada tag começa com # e usa PascalCase sem espaços\n"
         "- Responda SOMENTE com JSON, sem texto adicional"
     )
 
@@ -245,6 +247,8 @@ class ProductTagger:
         for doc in ref.stream():
             data = doc.to_dict()
             if not data.get('name'):
+                continue
+            if data.get('isTrashed', False):
                 continue
             if categories:
                 cats = data.get('categoriesIds') or []
