@@ -1238,6 +1238,213 @@ class ProductCategorizerAgent:
             self.log_message(f"Erro ao atualizar produto {product_id}: {e}", "error")
             return False
 
+    # Sufixo de formato para batch multi (até 2 subs por produto)
+    _BATCH_FORMAT_SUFFIX_MULTI = (
+        "\n\n---\n"
+        "Para esta tarefa de batch, responda SOMENTE com um objeto JSON:\n"
+        "{\"1\": [\"sub_id1\", \"sub_id2\"], \"2\": [\"sub_id3\"], ...}\n"
+        "Cada produto recebe uma lista com 1 ou 2 subcategorias (maximo 2) que melhor representam o item.\n"
+        "Use 2 subcategorias APENAS se o produto genuinamente pertence a 2 categorias distintas.\n"
+        "Sem markdown, sem explicacoes.\n"
+        "IMPORTANTE: Use EXCLUSIVAMENTE os IDs exatos da lista fornecida. Nao invente IDs."
+    )
+
+    def get_categories_batch_multi(self, products, categories, subcategories):
+        """Para o modo realocar: retorna ate 2 (cat_id, sub_id) por produto.
+        Inclui categoria atual de cada produto no contexto."""
+        cat_by_id = {c['id']: c for c in categories}
+        sub_by_id = {s['id']: s for s in subcategories}
+        subs_text = "\n".join(
+            f"{s['id']}|{s['name']}|{cat_by_id.get(s['categoryId'], {}).get('name', s['categoryId'])}"
+            for s in subcategories
+        )
+        lines = []
+        for i, p in enumerate(products):
+            cat_name = ''
+            cats = p.get('categories_ids') or []
+            subs = p.get('subcategories_ids') or []
+            if cats:
+                cat_name = cat_by_id.get(cats[0], {}).get('name', '')
+            sub_name = ''
+            if subs:
+                sub_name = sub_by_id.get(subs[0], {}).get('name', '')
+            ctx = ''
+            if cat_name or sub_name:
+                ctx = f" [atual: {cat_name}{(' / ' + sub_name) if sub_name else ''}]"
+            lines.append(f"{i+1}. {p['name']}{ctx}")
+        header = (
+            f"SUBCATEGORIAS VALIDAS (id|nome|categoria):\n{subs_text}\n\n"
+            f"Para cada produto abaixo, escolha 1 ou 2 subcategorias que melhor combinam com ele.\n"
+            f"A categoria atual do produto e exibida entre colchetes como referencia.\n"
+            f"Retorne o ID exato de cada subcategoria — a categoria sera derivada automaticamente.\n\n"
+            f"Produtos:\n" + "\n".join(lines)
+        )
+        results = [[] for _ in products]
+        try:
+            raw = self._call_openai(header, max_tokens=50 * len(products),
+                                    system_prompt=self.cat_system_prompt + self._BATCH_FORMAT_SUFFIX_MULTI)
+        except Exception as e:
+            self.log_message(f"Erro OpenAI batch multi: {e}", "error")
+            return results
+        text = raw.strip()
+        text = re.sub(r'```[a-z]*\n?', '', text).strip()
+        json_match = re.search(r'\{[^\{\}]+\}', text, re.DOTALL)
+        if json_match:
+            try:
+                mapping = json.loads(json_match.group())
+                for key, val in mapping.items():
+                    try:
+                        n = int(key) - 1
+                    except (ValueError, TypeError):
+                        continue
+                    if n < 0 or n >= len(products):
+                        continue
+                    subs_list = val if isinstance(val, list) else [val]
+                    pairs = []
+                    for raw_id in subs_list[:2]:
+                        sub_id = self._best_match(str(raw_id).split('|')[0].strip(), subcategories)
+                        if sub_id and sub_id in sub_by_id:
+                            pairs.append((sub_by_id[sub_id]['categoryId'], sub_id))
+                    results[n] = pairs
+            except Exception:
+                pass
+        return results
+
+    # Sufixo de formato para batch com mercearia separada
+    _BATCH_FORMAT_SUFFIX_MERCEARIA = (
+        "\n\n---\n"
+        "Para esta tarefa de batch, responda SOMENTE com um objeto JSON:\n"
+        "{\"1\": [\"sub_principal\", \"sub_mercearia_ou_null\"], \"2\": [\"sub_principal\", null], ...}\n"
+        "Elemento 0: ID da subcategoria PRINCIPAL que mais combina (lista PRINCIPAL — obrigatorio).\n"
+        "Elemento 1: ID da subcategoria de MERCEARIA que mais combina (lista MERCEARIA), ou null se nao se aplica.\n"
+        "So use uma sub de mercearia se o produto realmente tem equivalente nessa lista.\n"
+        "Sem markdown, sem explicacoes.\n"
+        "IMPORTANTE: Use EXCLUSIVAMENTE os IDs exatos das listas fornecidas. Nao invente IDs."
+    )
+
+    def get_categories_batch_with_mercearia(self, product_names, categories, subcategories):
+        """Retorna lista de pares por produto: [(cat_principal, sub_principal)] ou
+        [(cat_principal, sub_principal), (cat_mercearia, sub_mercearia)].
+        Uma chamada à IA: pede sub principal (nao-mercearia) + sub mercearia opcional."""
+        mercearia_cat_id = 'mercearia'
+        cat_by_id = {c['id']: c for c in categories}
+        sub_by_id = {s['id']: s for s in subcategories}
+        non_merc_subs = [s for s in subcategories if s.get('categoryId') != mercearia_cat_id]
+        merc_subs = [s for s in subcategories if s.get('categoryId') == mercearia_cat_id]
+
+        non_merc_text = "\n".join(
+            f"{s['id']}|{s['name']}|{cat_by_id.get(s['categoryId'],{}).get('name','')}"
+            for s in non_merc_subs
+        )
+        merc_text = "\n".join(f"{s['id']}|{s['name']}" for s in merc_subs)
+        numbered = "\n".join(f"{i+1}. {name}" for i, name in enumerate(product_names))
+        header = (
+            f"SUBCATEGORIAS PRINCIPAIS (id|nome|categoria):\n{non_merc_text}\n\n"
+            f"SUBCATEGORIAS MERCEARIA (id|nome):\n{merc_text}\n\n"
+            f"Produtos:\n{numbered}"
+        )
+        results = [[] for _ in product_names]
+        try:
+            raw = self._call_openai(header, max_tokens=50 * len(product_names),
+                                    system_prompt=self.cat_system_prompt + self._BATCH_FORMAT_SUFFIX_MERCEARIA)
+        except Exception as e:
+            self.log_message(f"Erro OpenAI batch mercearia: {e}", "error")
+            return results
+        text = re.sub(r'```[a-z]*\n?', '', raw.strip()).strip()
+        json_match = re.search(r'\{[^\{\}]+\}', text, re.DOTALL)
+        if not json_match:
+            return results
+        try:
+            mapping = json.loads(json_match.group())
+        except Exception:
+            return results
+        for key, val in mapping.items():
+            try:
+                n = int(key) - 1
+            except (ValueError, TypeError):
+                continue
+            if n < 0 or n >= len(product_names):
+                continue
+            elems = val if isinstance(val, list) else [val]
+            pairs = []
+            # Elemento 0: sub principal (não-mercearia)
+            if elems and elems[0]:
+                sub_id = self._best_match(str(elems[0]).split('|')[0].strip(), non_merc_subs)
+                if sub_id and sub_id in sub_by_id:
+                    pairs.append((sub_by_id[sub_id]['categoryId'], sub_id))
+            # Elemento 1: sub mercearia (opcional)
+            if len(elems) > 1 and elems[1] and str(elems[1]).lower() not in ('null', 'none', ''):
+                sub_id = self._best_match(str(elems[1]).split('|')[0].strip(), merc_subs)
+                if sub_id and sub_id in sub_by_id:
+                    pairs.append((sub_by_id[sub_id]['categoryId'], sub_id))
+            results[n] = pairs
+        return results
+
+    def update_product_categories_multi(self, product_id, estabelecimento_id,
+                                        pairs, cat_by_id, sub_by_id,
+                                        dry_run=False, history_key='categorizer_targeted',
+                                        log_fn=None):
+        """Atualiza produto com 1 ou 2 pares (cat_id, sub_id)."""
+        if not pairs:
+            return False
+        cat_ids = [c for c, _ in pairs]
+        sub_ids = [s for _, s in pairs]
+        shelf_ids = [f"{c}_{s}" for c, s in pairs]
+        shelves = [
+            {
+                'id': f"{c}_{s}",
+                'productCategoryId': c,
+                'productSubcategoryId': s,
+                'categoryName': cat_by_id.get(c, {}).get('name', c),
+                'subcategoryName': sub_by_id.get(s, {}).get('name', s)
+            }
+            for c, s in pairs
+        ]
+        update_data = {
+            'categoriesIds': cat_ids,
+            'subcategoriesIds': sub_ids,
+            'shelves': shelves,
+            'shelvesIds': shelf_ids
+        }
+        _log = log_fn or self.log_message_targeted
+        if dry_run:
+            labels = ', '.join(
+                f"{cat_by_id.get(c,{}).get('name',c)} / {sub_by_id.get(s,{}).get('name',s)}"
+                for c, s in pairs
+            )
+            _log(f"[DRY RUN] {product_id}: {labels}", "warning")
+            return True
+        try:
+            doc_ref = (self.db.collection('estabelecimentos')
+                       .document(estabelecimento_id)
+                       .collection('Products')
+                       .document(product_id))
+            old_data = {}
+            try:
+                snap = doc_ref.get()
+                if snap.exists:
+                    d = snap.to_dict() or {}
+                    old_data = {
+                        'categoriesIds': d.get('categoriesIds', []),
+                        'subcategoriesIds': d.get('subcategoriesIds', []),
+                        'shelves': d.get('shelves', []),
+                        'shelvesIds': d.get('shelvesIds', []),
+                    }
+            except Exception:
+                pass
+            doc_ref.update(update_data)
+            with _undo_lock:
+                undo_store[history_key].append({
+                    'product_id': product_id,
+                    'estabelecimento_id': estabelecimento_id,
+                    'old_data': old_data,
+                    'new_data': update_data,
+                })
+            return True
+        except Exception as e:
+            _log(f"Erro ao atualizar produto {product_id}: {e}", "error")
+            return False
+
     # ---- Targeted (Dirigido) mode ----
 
     def log_message_targeted(self, message, level="info"):
@@ -1333,7 +1540,9 @@ class ProductCategorizerAgent:
 
     def run_categorization_targeted(self, estabelecimento_id, target_category_id,
                                      include_others=False, delay=0.5, dry_run=False,
-                                     filter_subcategory_id=None):
+                                     filter_subcategory_id=None, find_mode=False,
+                                     include_mercearia=False,
+                                     fallback_category_id=None, fallback_subcategory_id=None):
         try:
             self.tokens_used = 0
             self.estimated_cost = 0
@@ -1356,23 +1565,33 @@ class ProductCategorizerAgent:
             except Exception:
                 pass
 
-            self.log_message_targeted(f"Iniciando modo dirigido: {estabelecimento_id}", "info")
+            modo_str = "ATRAIR (varrer todos)" if find_mode else "REALOCAR (produtos da categoria)"
+            self.log_message_targeted(f"Modo: {modo_str} — estabelecimento: {estabelecimento_id}", "info")
             self.log_message_targeted(f"Categoria alvo: {target_category_id}", "info")
             if filter_subcategory_id:
-                self.log_message_targeted(f"Filtro de subcategoria: {filter_subcategory_id}", "info")
-            if include_others:
-                self.log_message_targeted("Opcao ativa: tambem avaliar produtos de outras categorias", "info")
+                self.log_message_targeted(f"Subcategoria alvo: {filter_subcategory_id}", "info")
             if dry_run:
                 self.log_message_targeted("MODO DRY RUN - Nenhuma atualizacao sera feita", "warning")
 
             categories = self.load_categories(estabelecimento_id)
             subcategories = self.load_subcategories(estabelecimento_id)
+            if not include_mercearia:
+                categories = [c for c in categories if c['id'].lower() != 'mercearia']
+                allowed_cat_ids = {c['id'] for c in categories}
+                subcategories = [s for s in subcategories if s.get('categoryId') in allowed_cat_ids]
             cat_by_id = {c['id']: c for c in categories}
             sub_by_id = {s['id']: s for s in subcategories}
 
-            # Fallback: categoria/subcategoria "Outros" (IDs fixos)
-            outros_cat_id = 'outros'
-            outros_sub_id = 'outrosOutros'
+            # Fallback configurável
+            outros_cat_id = fallback_category_id or None
+            outros_sub_id = fallback_subcategory_id or None
+            # Se só a categoria foi configurada, usa a primeira sub disponível dela
+            if outros_cat_id and not outros_sub_id:
+                first_sub = next((s for s in subcategories if s.get('categoryId') == outros_cat_id), None)
+                if first_sub:
+                    outros_sub_id = first_sub['id']
+            outros_cat_name = cat_by_id.get(outros_cat_id, {}).get('name', 'Fallback') if outros_cat_id else None
+            outros_sub_name = sub_by_id.get(outros_sub_id, {}).get('name', 'Fallback') if outros_sub_id else None
 
             target_cat = cat_by_id.get(target_category_id)
             if not target_cat:
@@ -1395,18 +1614,20 @@ class ProductCategorizerAgent:
                 categorizer_targeted_state['running'] = False
                 return False
 
-            # Fase 1: produtos que já têm a categoria alvo → só define subcategoria
-            phase1 = [p for p in all_products if target_category_id in p.get('categories_ids', [])]
-            if filter_subcategory_id:
-                phase1 = [p for p in phase1 if filter_subcategory_id in p.get('subcategories_ids', [])]
-            # Fase 2 (opcional): demais produtos → IA decide se pertencem à categoria
-            phase2 = [p for p in all_products if target_category_id not in p.get('categories_ids', [])] if include_others else []
-            if filter_subcategory_id and phase2:
-                phase2 = [p for p in phase2 if filter_subcategory_id in p.get('subcategories_ids', [])]
-
-            self.log_message_targeted(f"Fase 1 — ja em '{target_cat['name']}': {len(phase1)} produtos", "info")
-            if include_others:
-                self.log_message_targeted(f"Fase 2 — outras categorias a avaliar: {len(phase2)} produtos", "info")
+            if find_mode:
+                # Modo atrair: varre todos os produtos que NÃO estão na categoria alvo
+                phase1 = []
+                phase2 = [p for p in all_products if target_category_id not in p.get('categories_ids', [])]
+                self.log_message_targeted(f"Varredura: {len(phase2)} produtos fora de '{target_cat['name']}' a avaliar", "info")
+            else:
+                # Modo realocar: apenas produtos já na categoria (+ filtro de subcategoria)
+                phase1 = [p for p in all_products if target_category_id in p.get('categories_ids', [])]
+                if filter_subcategory_id:
+                    phase1 = [p for p in phase1 if filter_subcategory_id in p.get('subcategories_ids', [])]
+                phase2 = [p for p in all_products if target_category_id not in p.get('categories_ids', [])] if include_others else []
+                self.log_message_targeted(f"Fase 1 — ja em '{target_cat['name']}': {len(phase1)} produtos", "info")
+                if include_others:
+                    self.log_message_targeted(f"Fase 2 — outras categorias a avaliar: {len(phase2)} produtos", "info")
 
             total = len(phase1) + len(phase2)
             if total == 0:
@@ -1451,41 +1672,41 @@ class ProductCategorizerAgent:
                 names = [p['name'] for p in batch]
                 self.update_progress_targeted({'id': batch[0]['id'], 'name': names[0], 'index': batch_start + 1, 'total': total})
                 try:
-                    cat_results = self.get_categories_batch(names, categories, subcategories)
+                    # Modo realocar: batch multi (até 2 cats/subs por produto, com contexto da cat atual)
+                    multi_results = self.get_categories_batch_multi(batch, categories, subcategories)
                 except Exception as e:
                     self.log_message_targeted(f"  Erro OpenAI no batch fase 1: {e}", "error")
                     with self._lock:
                         for _ in batch:
                             _tick(False)
                     return
-                for j, (product, (category_id, subcategory_id)) in enumerate(zip(batch, cat_results)):
+                for j, (product, pairs) in enumerate(zip(batch, multi_results)):
                     if not categorizer_targeted_state['running']:
                         return
                     pid, pname = product['id'], product['name']
                     i = batch_start + j + 1
                     self.log_message_targeted(f"[{i}/{total}] {pname}", "info")
-                    if not category_id or not subcategory_id:
-                        if outros_cat_id:
-                            reason = "categoria nao identificada" if not category_id else "subcategoria nao encontrada para a categoria"
-                            self.log_message_targeted(f"  -> Outros / Outros ({reason})", "warning")
-                            category_id, subcategory_id = outros_cat_id, outros_sub_id
-                            cat_name, sub_name = 'Outros', 'Outros'
+                    if not pairs:
+                        if outros_cat_id and outros_sub_id:
+                            self.log_message_targeted(f"  -> {outros_cat_name} / {outros_sub_name} (fallback)", "warning")
+                            ok = self.update_product_categories(pid, estabelecimento_id,
+                                                                outros_cat_id, outros_sub_id,
+                                                                outros_cat_name, outros_sub_name, dry_run,
+                                                                history_key='categorizer_targeted')
                         else:
-                            self.log_message_targeted(f"  Erro: nao foi possivel categorizar {pid}", "error")
-                            with self._lock:
-                                _tick(False)
-                            continue
+                            self.log_message_targeted(f"  Sem fallback configurado — produto ignorado", "warning")
+                            ok = None
                     else:
-                        cat_name = cat_by_id.get(category_id, {}).get('name', category_id)
-                        sub_name = sub_by_id.get(subcategory_id, {}).get('name', subcategory_id)
-                        if category_id != target_category_id:
-                            self.log_message_targeted(f"  -> Reatribuido: {cat_name} / {sub_name}", "info")
-                        else:
-                            self.log_message_targeted(f"  -> {cat_name} / {sub_name}", "success")
-                    ok = self.update_product_categories(pid, estabelecimento_id,
-                                                        category_id, subcategory_id,
-                                                        cat_name, sub_name, dry_run,
-                                                        history_key='categorizer_targeted')
+                        labels = ' + '.join(
+                            f"{cat_by_id.get(c,{}).get('name',c)} / {sub_by_id.get(s,{}).get('name',s)}"
+                            for c, s in pairs
+                        )
+                        level = "success" if any(c == target_category_id for c, _ in pairs) else "info"
+                        self.log_message_targeted(f"  -> {labels}", level)
+                        ok = self.update_product_categories_multi(pid, estabelecimento_id,
+                                                                   pairs, cat_by_id, sub_by_id,
+                                                                   dry_run,
+                                                                   history_key='categorizer_targeted')
                     with self._lock:
                         _tick(ok)
 
@@ -1554,7 +1775,7 @@ class ProductCategorizerAgent:
     def run_categorization(self, estabelecimento_id, delay_between_products=0.5, dry_run=False,
                            only_uncategorized=False, filter_category_id=None,
                            include_mercearia=False, filter_subcategory_id=None,
-                           use_images=False):
+                           use_images=False, fallback_category_id=None, fallback_subcategory_id=None):
         try:
             self.tokens_used = 0
             self.estimated_cost = 0
@@ -1602,6 +1823,9 @@ class ProductCategorizerAgent:
                 self.log_message("Nenhuma subcategoria encontrada", "warning")
                 categorizer_state['running'] = False
                 return False
+            if not include_mercearia:
+                allowed_cat_ids = {c['id'] for c in categories}
+                subcategories = [s for s in subcategories if s.get('categoryId') in allowed_cat_ids]
 
             if use_images:
                 self.log_message("Analise de imagens ativada", "info")
@@ -1615,9 +1839,16 @@ class ProductCategorizerAgent:
             cat_by_id = {c['id']: c for c in categories}
             sub_by_id = {s['id']: s for s in subcategories}
 
-            # Fallback: categoria/subcategoria "Outros" (IDs fixos)
-            outros_cat_id = 'outros'
-            outros_sub_id = 'outrosOutros'
+            # Fallback configurável (definido pelo usuário na UI)
+            outros_cat_id = fallback_category_id or None
+            outros_sub_id = fallback_subcategory_id or None
+            # Se só a categoria foi configurada, usa a primeira sub disponível dela
+            if outros_cat_id and not outros_sub_id:
+                first_sub = next((s for s in subcategories if s.get('categoryId') == outros_cat_id), None)
+                if first_sub:
+                    outros_sub_id = first_sub['id']
+            outros_cat_name = cat_by_id.get(outros_cat_id, {}).get('name', 'Fallback') if outros_cat_id else None
+            outros_sub_name = sub_by_id.get(outros_sub_id, {}).get('name', 'Fallback') if outros_sub_id else None
 
             total = len(products)
             categorizer_state['progress'] = {
@@ -1651,46 +1882,69 @@ class ProductCategorizerAgent:
                 if not categorizer_state['running']:
                     return
 
-                image_urls = [p.get('image_url') for p in batch] if use_images else None
-                cat_results = self.get_categories_batch([p['name'] for p in batch], categories, subcategories, image_urls)
-                for idx, (product, (category_id, subcategory_id)) in enumerate(zip(batch, cat_results)):
+                if include_mercearia:
+                    # Batch com duas camadas: principal (nao-mercearia) + mercearia opcional
+                    multi_results = self.get_categories_batch_with_mercearia(names, categories, subcategories)
+                else:
+                    image_urls = [p.get('image_url') for p in batch] if use_images else None
+                    single_results = self.get_categories_batch(names, categories, subcategories, image_urls)
+                    multi_results = [[(c, s)] if c and s else [] for c, s in single_results]
+
+                for idx, (product, pairs) in enumerate(zip(batch, multi_results)):
                     if not categorizer_state['running']:
                         return
                     pid, pname = product['id'], product['name']
                     i = batch_start + idx + 1
                     self.log_message(f"[{i}/{total}] {pname}", "info")
+
                     # Retry individual quando o batch falhou para este produto
-                    if not category_id or not subcategory_id:
+                    if not pairs:
                         try:
                             category_id, subcategory_id = self.get_category_and_subcategory(
                                 pname, categories, subcategories
                             )
+                            if category_id and subcategory_id:
+                                pairs = [(category_id, subcategory_id)]
                         except Exception:
-                            category_id, subcategory_id = None, None
+                            pairs = []
+
                     with self._lock:
-                        if not category_id or not subcategory_id:
-                            if outros_cat_id:
-                                reason = "categoria nao identificada" if not category_id else "subcategoria nao encontrada para a categoria"
-                                self.log_message(f"  -> Outros / Outros ({reason})", "warning")
+                        if not pairs:
+                            if outros_cat_id and outros_sub_id:
+                                reason = "nao foi possivel categorizar"
+                                self.log_message(f"  -> {outros_cat_name} / {outros_sub_name} (fallback — {reason})", "warning")
                                 ok = self.update_product_categories(
                                     pid, estabelecimento_id,
                                     outros_cat_id, outros_sub_id,
-                                    'Outros', 'Outros', dry_run
+                                    outros_cat_name, outros_sub_name, dry_run
                                 )
                                 _tick_product(ok)
                             else:
-                                self.log_message(f"  Erro: nao foi possivel categorizar {pid}", "error")
+                                self.log_message(f"  Sem fallback configurado — produto ignorado", "warning")
                                 categorizer_state['progress']['errors'] += 1
                                 categorizer_state['progress']['processed'] += 1
                         else:
-                            category_name = cat_by_id.get(category_id, {}).get('name', category_id)
-                            subcategory_name = sub_by_id.get(subcategory_id, {}).get('name', subcategory_id)
-                            self.log_message(f"  -> {category_name} / {subcategory_name}", "success")
-                            ok = self.update_product_categories(
-                                pid, estabelecimento_id,
-                                category_id, subcategory_id,
-                                category_name, subcategory_name, dry_run
+                            labels = ' + '.join(
+                                f"{cat_by_id.get(c,{}).get('name',c)} / {sub_by_id.get(s,{}).get('name',s)}"
+                                for c, s in pairs
                             )
+                            self.log_message(f"  -> {labels}", "success")
+                            if len(pairs) == 1:
+                                c, s = pairs[0]
+                                ok = self.update_product_categories(
+                                    pid, estabelecimento_id,
+                                    c, s,
+                                    cat_by_id.get(c,{}).get('name',c),
+                                    sub_by_id.get(s,{}).get('name',s),
+                                    dry_run
+                                )
+                            else:
+                                ok = self.update_product_categories_multi(
+                                    pid, estabelecimento_id,
+                                    pairs, cat_by_id, sub_by_id,
+                                    dry_run, history_key='categorizer',
+                                    log_fn=self.log_message
+                                )
                             _tick_product(ok)
                         categorizer_state['progress']['tokens_used'] = self.tokens_used
                         categorizer_state['progress']['estimated_cost'] = self.estimated_cost
@@ -2269,13 +2523,14 @@ def start_automation():
         custom_prompt = data.get('custom_prompt', '').strip() or None
         filter_subcategory_id = data.get('filter_subcategory_id', '').strip() or None
         use_images = bool(data.get('use_images', False))
+        only_raw_names = bool(data.get('only_raw_names', False))
 
         if not categories:
             return jsonify({'error': 'Selecione ao menos uma categoria'}), 400
 
 
         def run_thread():
-            automator.run_automation(estabelecimento_id, categories, delay, dry_run, custom_prompt, filter_subcategory_id, use_images)
+            automator.run_automation(estabelecimento_id, categories, delay, dry_run, custom_prompt, filter_subcategory_id, use_images, only_raw_names)
 
         thread = Thread(target=run_thread)
         thread.daemon = True
@@ -2563,6 +2818,8 @@ def start_categorization():
     include_mercearia = bool(data.get('include_mercearia', False))
     use_images = bool(data.get('use_images', False))
     custom_prompt = data.get('custom_prompt', '').strip() or None
+    fallback_category_id = data.get('fallback_category_id', '').strip() or None
+    fallback_subcategory_id = data.get('fallback_subcategory_id', '').strip() or None
 
     # Sobrescreve o prompt apenas para esta execucao (restaura ao final)
     original_prompt = categorizer.cat_system_prompt
@@ -2578,6 +2835,8 @@ def start_categorization():
                 include_mercearia=include_mercearia,
                 filter_subcategory_id=filter_subcategory_id,
                 use_images=use_images,
+                fallback_category_id=fallback_category_id,
+                fallback_subcategory_id=fallback_subcategory_id,
             )
         finally:
             if custom_prompt:
@@ -2721,9 +2980,15 @@ def start_categorization_targeted():
     delay = float(data.get('delay', 0.5))
     dry_run = bool(data.get('dry_run', False))
     filter_subcategory_id = data.get('filter_subcategory_id', '').strip() or None
+    find_mode = bool(data.get('find_mode', False))
+    include_mercearia = bool(data.get('include_mercearia', False))
+    fallback_category_id = data.get('fallback_category_id', '').strip() or None
+    fallback_subcategory_id = data.get('fallback_subcategory_id', '').strip() or None
 
     def run():
-        categorizer.run_categorization_targeted(est_id, target_cat_id, include_others, delay, dry_run, filter_subcategory_id)
+        categorizer.run_categorization_targeted(est_id, target_cat_id, include_others, delay, dry_run,
+                                                 filter_subcategory_id, find_mode, include_mercearia,
+                                                 fallback_category_id, fallback_subcategory_id)
 
     Thread(target=run, daemon=True).start()
     return jsonify({'success': True, 'message': 'Categorizacao dirigida iniciada'})

@@ -533,9 +533,18 @@ MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambi
         with ThreadPoolExecutor(max_workers=1) as executor:
             list(executor.map(_process_batch, ((i * BATCH_SIZE, b) for i, b in enumerate(batches))))
 
+    @staticmethod
+    def _is_raw_name(name: str) -> bool:
+        """Retorna True se o nome parece bruto: ≥70% das letras em maiúsculo."""
+        alpha = [c for c in name if c.isalpha()]
+        if not alpha:
+            return False
+        return sum(1 for c in alpha if c.isupper()) / len(alpha) >= 0.70
+
     def run_automation(self, estabelecimento_id: str, categories: List[str],
                        delay: float = 1.0, dry_run: bool = False, custom_prompt: str = None,
-                       filter_subcategory_id: str = None, use_images: bool = False):
+                       filter_subcategory_id: str = None, use_images: bool = False,
+                       only_raw_names: bool = False):
         try:
             self.tokens_used = 0
             self.estimated_cost = 0
@@ -569,11 +578,22 @@ MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambi
 
             if use_images:
                 self.log_message("Analise de imagens ativada", "info")
+            if only_raw_names:
+                self.log_message("Filtro ativo: apenas nomes brutos (≥70% maiúsculos)", "info")
             products = self.get_products_from_firestore(estabelecimento_id, categories, filter_subcategory_id, use_images)
             if not products:
                 self.log_message("Nenhum produto encontrado", "warning")
                 automation_state['running'] = False
                 return False
+
+            if only_raw_names:
+                before = len(products)
+                products = [p for p in products if self._is_raw_name(p.get('name', ''))]
+                self.log_message(f"Filtro nomes brutos: {len(products)} de {before} produtos", "info")
+                if not products:
+                    self.log_message("Nenhum produto com nome bruto encontrado", "warning")
+                    automation_state['running'] = False
+                    return False
 
             total = len(products)
             automation_state['progress'] = {

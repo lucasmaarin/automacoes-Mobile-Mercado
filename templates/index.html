@@ -1066,6 +1066,11 @@
                         <span class="toggle-track"><span class="toggle-thumb"></span></span>
                         <span>Analisar imagens dos produtos</span>
                     </label>
+                    <label class="toggle-sw">
+                        <input type="checkbox" id="renOnlyRaw">
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                        <span>Apenas nomes brutos (todo maiúsculo / abreviações)</span>
+                    </label>
                 </div>
             </div>
 
@@ -1219,6 +1224,11 @@
                             <span class="toggle-track"><span class="toggle-thumb"></span></span>
                             <span>Analisar imagens dos produtos</span>
                         </label>
+                        <label class="toggle-sw" id="catRelocateRow" style="display:none">
+                            <input type="checkbox" id="catRelocate" checked>
+                            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                            <span>Realocar produtos desta categoria</span>
+                        </label>
                     </div>
                     <div style="margin-top:10px" id="catCategoryFilter">
                         <label style="font-size:.84rem;color:var(--text-secondary);display:block;margin-bottom:6px">Filtrar por categoria (opcional)</label>
@@ -1238,11 +1248,27 @@
                                 Carregar
                             </button>
                         </div>
-                        <select id="catSubcatSel" style="width:100%;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.84rem">
+                        <select id="catSubcatSel" style="width:100%;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.84rem" onchange="Cat.onSubcatChange()">
                             <option value="">-- Todas as subcategorias --</option>
                         </select>
                     </div>
                 </div>
+                <div class="card" style="margin-top:10px">
+                    <div class="card-label">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        Fallback para não categorizados
+                    </div>
+                    <div style="font-size:.8rem;color:var(--text-secondary);margin-bottom:8px">Categoria e subcategoria usadas quando a IA não consegue categorizar um produto. Se não definido, o produto é ignorado.</div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <select id="catFallbackCat" style="flex:1;min-width:140px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.84rem" onchange="Cat.onFallbackCatChange()">
+                            <option value="">-- Sem fallback --</option>
+                        </select>
+                        <select id="catFallbackSub" style="flex:1;min-width:140px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.84rem">
+                            <option value="">-- Sub do fallback --</option>
+                        </select>
+                    </div>
+                </div>
+
                 <div class="prompt-section">
                     <div class="prompt-hdr" id="catPromptHdr" onclick="Cat.togglePrompt()">
                         <span style="display:flex;align-items:center;gap:7px">
@@ -1688,10 +1714,10 @@
         socket.on('categorizer_progress_update', d => Cat.progress(d.progress, d.current_product));
         socket.on('categorizer_status_update', d => { Cat._running=d.running; Cat.progress(d.progress, d.current_product); Cat.btnState(d.running); });
         socket.on('categorizer_logs_update', d => { $('catLog').innerHTML = d.logs?.length ? '' : '<div class="log-l info">Aguardando...</div>'; (d.logs||[]).forEach(l=>addLog('catLog',l.message,l.level)); });
-        socket.on('categorizer_targeted_log_update', () => {});
-        socket.on('categorizer_targeted_progress_update', () => {});
-        socket.on('categorizer_targeted_status_update', () => {});
-        socket.on('categorizer_targeted_logs_update', () => {});
+        socket.on('categorizer_targeted_log_update', d => { if(Cat._findMode) addLog('catLog', d.message, d.level); });
+        socket.on('categorizer_targeted_progress_update', d => { if(Cat._findMode) Cat.progress(d.progress, d.current_product); });
+        socket.on('categorizer_targeted_status_update', d => { if(Cat._findMode){ Cat._running=d.running; Cat.progress(d.progress, d.current_product); Cat.btnState(d.running); } });
+        socket.on('categorizer_targeted_logs_update', d => { if(Cat._findMode){ $('catLog').innerHTML = d.logs?.length ? '' : '<div class="log-l info">Aguardando...</div>'; (d.logs||[]).forEach(l=>addLog('catLog',l.message,l.level)); } });
         socket.on('tagger_log_update', d => addLog('taggerLog', d.message, d.level));
         socket.on('tagger_progress_update', d => Tagger.progress(d.progress, d.current_product));
         socket.on('tagger_status_update', d => { Tagger._running = d.running; Tagger.progress(d.progress, d.current_product); Tagger.btnState(d.running); if(d.running || (d.progress && d.progress.total > 0)) $('tagProgressArea').classList.add('active'); });
@@ -2055,23 +2081,53 @@
             else { await this.start(); }
         },
 
+        _findMode: false,
+
         async start() {
             const estId = getEstId('catEstSel','catEstCustom');
             if(!estId){ toast('Selecione o estabelecimento','warning'); return; }
             const delay = parseFloat($('catDelay').value)||0.5;
             const dryRun = $('catDryRun').checked;
-            const onlyUncategorized = $('catOnlyUncategorized').checked;
-            const includeMercearia = $('catIncludeMercearia').checked;
-            const catUseImages = $('catUseImages').checked;
             const filterCategory = $('catFilterCategory').value.trim() || null;
             const filterSubcat = $('catSubcatSel').value || null;
-            const prompt = $('catPromptTa').value.trim();
-            const payload = {estabelecimento_id:estId, delay, dry_run:dryRun, only_uncategorized:onlyUncategorized, include_mercearia:includeMercearia, use_images:catUseImages};
-            if(filterCategory) payload.filter_category_id = filterCategory;
-            if(filterSubcat) payload.filter_subcategory_id = filterSubcat;
-            if(prompt) payload.custom_prompt = prompt;
+            const relocate = $('catRelocate').checked;
+
+            // Modo atrair: categoria selecionada + toggle de realocar desligado
+            const useFindMode = filterCategory && !relocate;
+            this._findMode = useFindMode;
+
+            let endpoint, payload;
+
+            const fallbackCat = $('catFallbackCat').value || null;
+            const fallbackSub = $('catFallbackSub').value || null;
+            const includeMercearia = $('catIncludeMercearia').checked;
+
+            if(useFindMode) {
+                if(!filterCategory){ toast('Selecione uma categoria para usar o modo Atrair','warning'); return; }
+                endpoint = API+'/api/categorizer-targeted/start';
+                payload = {
+                    estabelecimento_id: estId,
+                    target_category_id: filterCategory,
+                    delay, dry_run: dryRun,
+                    find_mode: true,
+                    include_mercearia: includeMercearia
+                };
+                if(filterSubcat) payload.filter_subcategory_id = filterSubcat;
+            } else {
+                const onlyUncategorized = $('catOnlyUncategorized').checked;
+                const catUseImages = $('catUseImages').checked;
+                const prompt = $('catPromptTa').value.trim();
+                endpoint = API+'/api/categorizer/start';
+                payload = {estabelecimento_id:estId, delay, dry_run:dryRun, only_uncategorized:onlyUncategorized, include_mercearia:includeMercearia, use_images:catUseImages};
+                if(filterCategory) payload.filter_category_id = filterCategory;
+                if(filterSubcat) payload.filter_subcategory_id = filterSubcat;
+                if(prompt) payload.custom_prompt = prompt;
+            }
+            if(fallbackCat) payload.fallback_category_id = fallbackCat;
+            if(fallbackSub) payload.fallback_subcategory_id = fallbackSub;
+
             try {
-                const r = await (await fetch(API+'/api/categorizer/start',{
+                const r = await (await fetch(endpoint,{
                     method:'POST',
                     headers:{'Content-Type':'application/json'},
                     body:JSON.stringify(payload)
@@ -2082,8 +2138,9 @@
         },
 
         async stop() {
+            const ep = this._findMode ? '/api/categorizer-targeted/stop' : '/api/categorizer/stop';
             try {
-                await fetch(API+'/api/categorizer/stop',{method:'POST'});
+                await fetch(API+ep,{method:'POST'});
                 this._running=false; this.btnState(false); toast('Interrompendo...','warning');
             } catch(e){ toast('Erro: '+e.message,'error'); }
         },
@@ -2184,12 +2241,17 @@
             try {
                 const r = await (await fetch(API+'/api/categorizer/categories?estabelecimento_id='+encodeURIComponent(estId))).json();
                 if(r.categories) {
+                    const fallbackSel = $('catFallbackCat');
+                    const prevFallback = fallbackSel.value;
+                    fallbackSel.innerHTML = '<option value="">-- Sem fallback --</option>';
                     r.categories.forEach(cat => {
                         const o = document.createElement('option');
                         o.value = cat.id || cat;
                         o.textContent = cat.name || cat;
                         sel.appendChild(o);
+                        fallbackSel.appendChild(o.cloneNode(true));
                     });
+                    if(prevFallback) fallbackSel.value = prevFallback;
                     toast(r.categories.length+' categorias carregadas','success');
                     $('catSubcatSel').innerHTML = '<option value="">-- Todas as subcategorias --</option>';
                 }
@@ -2198,8 +2260,35 @@
             btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.8"/></svg> Carregar Categorias';
         },
 
+        async onFallbackCatChange() {
+            const estId = getEstId('catEstSel','catEstCustom');
+            const catId = $('catFallbackCat').value;
+            const subSel = $('catFallbackSub');
+            subSel.innerHTML = '<option value="">-- Sub do fallback --</option>';
+            if(!catId || !estId) return;
+            try {
+                const r = await (await fetch(API+'/api/subcategories?estabelecimento_id='+encodeURIComponent(estId)+'&category_id='+encodeURIComponent(catId))).json();
+                if(r.success) r.subcategories.forEach(s => {
+                    const o = document.createElement('option');
+                    o.value = s.id; o.textContent = s.name;
+                    subSel.appendChild(o);
+                });
+            } catch(e) {}
+        },
+
         onCategoryChange() {
             $('catSubcatSel').innerHTML = '<option value="">-- Todas as subcategorias --</option>';
+            this._updateRelocateToggle();
+        },
+
+        onSubcatChange() {
+            this._updateRelocateToggle();
+        },
+
+        _updateRelocateToggle() {
+            const hasFilter = !!$('catFilterCategory').value || !!$('catSubcatSel').value;
+            $('catRelocateRow').style.display = hasFilter ? '' : 'none';
+            if(hasFilter) $('catRelocate').checked = true;
         },
 
         async loadSubcategories() {

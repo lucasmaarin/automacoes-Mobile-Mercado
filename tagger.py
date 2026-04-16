@@ -20,29 +20,68 @@ def _parse_rate_limit_wait(error: Exception, default: float = 5.0) -> float:
     return default
 
 
+# Palavras conectoras que não viram tags
+_STOP_WORDS = {
+    'e', 'de', 'da', 'do', 'das', 'dos', 'para', 'com', 'em',
+    'no', 'na', 'nos', 'nas', 'a', 'o', 'as', 'os', 'um', 'uma',
+    'ao', 'aos', 'à', 'às', 'por', 'pelo', 'pela', 'pelos', 'pelas',
+    'ou', 'que', 'se', 'seu', 'sua', 'seus', 'suas'
+}
+
+# Tipos válidos de embalagem que a IA pode retornar
+_PACKAGING_TYPES = {
+    'garrafa', 'lata', 'caixinha', 'caixa', 'sache', 'sachê', 'pote',
+    'copo', 'bandeja', 'bag', 'vidro', 'tetra pak', 'tetrapak', 'envelope',
+    'bisnaga', 'barrica', 'frasco', 'longa vida', 'longavida', 'embalagem',
+    'saco', 'saquinho'
+}
+
+# Normaliza variações de embalagem para um tag canônico
+_PACKAGING_NORMALIZE = {
+    'tetrapak': 'caixinha',
+    'tetra pak': 'caixinha',
+    'longavida': 'caixinha',
+    'longa vida': 'caixinha',
+    'sachê': 'sache',
+}
+
+
+def _tags_from_name(name: str) -> list:
+    """Gera tags a partir do nome sem usar IA — divide por palavras, filtra stop words."""
+    words = name.split()
+    tags = []
+    seen = set()
+    for word in words:
+        # Remove caracteres que não sejam letras, números, acentos ou %
+        clean = re.sub(r'[^\w%]', '', word, flags=re.UNICODE)
+        if not clean:
+            continue
+        lower = clean.lower()
+        # Filtra stop words e tokens muito curtos (1 char) que não sejam numéricos
+        if lower in _STOP_WORDS:
+            continue
+        if len(lower) < 2 and not lower.isdigit():
+            continue
+        tag = '#' + lower
+        if tag not in seen:
+            seen.add(tag)
+            tags.append(tag)
+    return tags
+
+
 class ProductTagger:
-    # Sem imagens: 40 nomes por chamada, 3 workers paralelos
-    BATCH_SIZE = 40
-    # Com imagens: 5 produtos+imagens por chamada, 3 workers paralelos
+    # Com imagens: 5 produtos por chamada, 3 workers
     IMAGE_BATCH_SIZE = 5
     MAX_WORKERS = 3
 
     INPUT_COST  = 0.00015 / 1000   # gpt-4o-mini
     OUTPUT_COST = 0.0006  / 1000
 
-    _SYSTEM_PROMPT = (
-        "Você é um especialista em categorização de produtos de supermercado. "
-        "Gere tags relevantes para produtos com base no nome e, quando disponível, na imagem.\n\n"
-        "Regras:\n"
-        "- Gere de 3 a 8 tags por produto\n"
-        "- SEMPRE inclua a marca do produto como tag quando identificável no nome "
-        "(ex: Nestlé → #Nestle, Coca-Cola → #CocaCola, Piracanjuba → #Piracanjuba)\n"
-        "- Tags do nome: marca (obrigatório), tipo do produto, sabor/variante, atributos especiais "
-        "(ex: #ZeroLactose, #Integral, #Light, #Diet, #Proteina)\n"
-        "- Tags da imagem (se fornecida): APENAS o tipo de embalagem identificado "
-        "(ex: #Garrafa, #Lata, #Caixinha, #Sache, #Pote, #Copo, #Bandeja, #Bag, #Vidro, #TetraPak)\n"
-        "- Cada tag começa com # e usa PascalCase sem espaços\n"
-        "- Responda SOMENTE com JSON, sem texto adicional"
+    _PACKAGING_PROMPT = (
+        "Analise as imagens dos produtos abaixo e identifique APENAS o tipo de embalagem de cada um.\n"
+        "Responda SOMENTE com JSON: chave = número do produto (string), valor = tipo de embalagem (string) ou null se não conseguir identificar.\n"
+        "Tipos válidos: Garrafa, Lata, Caixinha, Caixa, Sache, Pote, Copo, Bandeja, Bag, Vidro, TetraPak, Envelope, Bisnaga, Frasco, Saco, Saquinho.\n"
+        'Exemplo: {"1": "Garrafa", "2": "Lata", "3": null}'
     )
 
     def __init__(self, db_client):
@@ -109,7 +148,6 @@ class ProductTagger:
         return raw
 
     def _fetch_image_base64(self, url: str) -> tuple:
-        """Baixa imagem e retorna (base64_str, media_type). Retorna (None, None) se falhar."""
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req, timeout=10) as resp:
@@ -122,73 +160,19 @@ class ProductTagger:
         except Exception:
             return None, None
 
-    def _image_data_url(self, url: str) -> str | None:
+    def _image_data_url(self, url: str):
         b64, media_type = self._fetch_image_base64(url)
         if b64:
             return f"data:{media_type};base64,{b64}"
         return None
 
     # ------------------------------------------------------------------
-    # API calls
+    # API — apenas para embalagem (imagem)
     # ------------------------------------------------------------------
 
-    def get_tags_batch(self, names: list, max_retries: int = 8) -> dict:
-        """Batch de nomes (sem imagens). Retorna {index: [tags]}."""
-        numbered = "\n".join(f"{i + 1}. {n}" for i, n in enumerate(names))
-        user_prompt = (
-            f"Gere tags para os {len(names)} produtos abaixo.\n\n"
-            f"{numbered}\n\n"
-            "Responda SOMENTE com JSON: chave = número do produto (string), valor = array de tags com #.\n"
-            'Exemplo: {"1": ["#Biscoito", "#Wafer", "#Bauducco"], "2": ["#Leite", "#Integral"]}'
-        )
-        for attempt in range(max_retries):
-            try:
-                resp = _ext.openai_client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": self._SYSTEM_PROMPT},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    max_tokens=2000,
-                    temperature=0.3
-                )
-                self._record_usage(resp.usage)
-                data = json.loads(self._clean_json(resp.choices[0].message.content))
-                result = {}
-                for k, v in data.items():
-                    idx = int(k) - 1
-                    if isinstance(v, list):
-                        result[idx] = [str(t) for t in v if str(t).startswith('#')]
-                return result
-            except _openai_module.RateLimitError as e:
-                if _ext._is_quota_error(e):
-                    _ext.emit_quota_exceeded()
-                    raise
-                wait = _parse_rate_limit_wait(e)
-                self.log_message(f"Rate limit, aguardando {wait:.1f}s...", "warning")
-                time.sleep(wait)
-            except Exception as e:
-                if attempt < max_retries - 1:
-                    time.sleep(1)
-                else:
-                    raise
-        return {}
-
-    def get_tags_image_batch(self, products: list, max_retries: int = 8) -> dict:
-        """Batch com imagens (até IMAGE_BATCH_SIZE produtos). Retorna {index: [tags]}.
-        products: lista de dicts com 'name' e 'image_url'.
-        """
-        # Monta conteúdo: para cada produto, texto + imagem (se disponível)
-        user_content = []
-        user_content.append({
-            "type": "text",
-            "text": (
-                f"Gere tags para os {len(products)} produtos abaixo. "
-                "Para cada produto considere o nome E a imagem da embalagem.\n\n"
-                "Responda SOMENTE com JSON: chave = número do produto (string), valor = array de tags com #.\n"
-                'Exemplo: {"1": ["#Leite", "#TetraPak"], "2": ["#Biscoito", "#Lata"]}\n\n'
-            )
-        })
+    def get_packaging_batch(self, products: list, max_retries: int = 8) -> dict:
+        """Retorna {index: 'TipoEmbalagem'} apenas com base nas imagens."""
+        user_content = [{"type": "text", "text": self._PACKAGING_PROMPT + "\n\n"}]
 
         for i, p in enumerate(products):
             user_content.append({"type": "text", "text": f"Produto {i + 1}: {p['name']}"})
@@ -204,20 +188,16 @@ class ProductTagger:
             try:
                 resp = _ext.openai_client.chat.completions.create(
                     model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": self._SYSTEM_PROMPT},
-                        {"role": "user", "content": user_content}
-                    ],
-                    max_tokens=800,
-                    temperature=0.3
+                    messages=[{"role": "user", "content": user_content}],
+                    max_tokens=200,
+                    temperature=0.1
                 )
                 self._record_usage(resp.usage)
                 data = json.loads(self._clean_json(resp.choices[0].message.content))
                 result = {}
                 for k, v in data.items():
-                    idx = int(k) - 1
-                    if isinstance(v, list):
-                        result[idx] = [str(t) for t in v if str(t).startswith('#')]
+                    if v and isinstance(v, str):
+                        result[int(k) - 1] = v.strip()
                 return result
             except _openai_module.RateLimitError as e:
                 if _ext._is_quota_error(e):
@@ -268,7 +248,6 @@ class ProductTagger:
         return products
 
     def _save_tags_batch(self, estabelecimento_id: str, updates: list, dry_run: bool):
-        """updates: lista de (product_id, tags)"""
         if dry_run or not updates:
             return
         db_batch = self.db.batch()
@@ -315,12 +294,15 @@ class ProductTagger:
             if dry_run:
                 self.log_message("MODO DRY RUN — nenhuma alteração será salva", "warning")
 
-            # Separa os que já têm tags (se não for sobrescrever)
             to_process = []
             skipped_count = 0
             for p in products:
                 if p['existing_tags'] and not overwrite:
-                    skipped_count += 1
+                    if use_images:
+                        # Modo imagem: processa mesmo com tags existentes (vai mesclar embalagem)
+                        to_process.append(p)
+                    else:
+                        skipped_count += 1
                 else:
                     to_process.append(p)
 
@@ -328,20 +310,22 @@ class ProductTagger:
                 self._update_progress(skipped=skipped_count)
                 self.log_message(f"{skipped_count} produtos ignorados (já têm tags)", "info")
 
+            mode = "com imagens (IA apenas para embalagem)" if use_images else "sem IA (palavras do nome)"
             self.log_message(
-                f"{len(to_process)} produtos para processar — "
-                f"{'com imagens' if use_images else 'sem imagens'}, "
+                f"{len(to_process)} produtos para processar — {mode}, "
                 f"{self.MAX_WORKERS} workers paralelos",
                 "info"
             )
             self._emit_progress()
 
             if use_images:
+                def _image_chunk(chunk, est_id, dr):
+                    return self._process_image_chunk(chunk, est_id, dr, overwrite)
                 self._run_parallel(to_process, estabelecimento_id, dry_run,
-                                   self.IMAGE_BATCH_SIZE, self._process_image_chunk)
+                                   self.IMAGE_BATCH_SIZE, _image_chunk)
             else:
                 self._run_parallel(to_process, estabelecimento_id, dry_run,
-                                   self.BATCH_SIZE, self._process_name_chunk)
+                                   500, self._process_name_chunk)
 
         except Exception as e:
             self.log_message(f"Erro fatal: {e}", "error")
@@ -372,7 +356,6 @@ class ProductTagger:
 
     def _run_parallel(self, products, estabelecimento_id, dry_run, chunk_size, process_fn):
         chunks = [products[i:i + chunk_size] for i in range(0, len(products), chunk_size)]
-
         with ThreadPoolExecutor(max_workers=self.MAX_WORKERS) as executor:
             futures = {
                 executor.submit(process_fn, chunk, estabelecimento_id, dry_run): chunk
@@ -380,7 +363,6 @@ class ProductTagger:
             }
             for future in as_completed(futures):
                 if not tagger_state['running']:
-                    # Cancela futures pendentes
                     for f in futures:
                         f.cancel()
                     self.log_message("Execução interrompida pelo usuário", "warning")
@@ -391,70 +373,73 @@ class ProductTagger:
                     self.log_message(f"Erro em chunk: {e}", "error")
 
     def _process_name_chunk(self, chunk, estabelecimento_id, dry_run):
-        """Processa um chunk de produtos sem imagens."""
+        """Tags geradas diretamente das palavras do nome — sem IA."""
         if not tagger_state['running']:
             return
-        names = [p['name'] for p in chunk]
-        try:
-            tags_map = self.get_tags_batch(names)
-        except Exception as e:
-            self.log_message(f"Erro no batch de nomes: {e}", "error")
-            self._update_progress(errors=len(chunk))
-            return
-
         updates = []
         updated = skipped = errors = 0
-        for j, product in enumerate(chunk):
-            tags = tags_map.get(j, [])
+        for product in chunk:
             name = product['name']
+            tags = _tags_from_name(name)
             if tags:
-                self.log_message(f"{name} → {', '.join(tags)}", "info")
+                self.log_message(f"{name} → {' '.join(tags)}", "info")
                 updates.append((product['id'], tags))
                 updated += 1
             else:
                 self.log_message(f"{name} → sem tags geradas", "warning")
                 skipped += 1
-
         try:
             self._save_tags_batch(estabelecimento_id, updates, dry_run)
         except Exception as e:
-            self.log_message(f"Erro ao salvar batch: {e}", "error")
+            self.log_message(f"Erro ao salvar: {e}", "error")
             errors += updated
             updated = 0
-
         self._update_progress(updated=updated, skipped=skipped, errors=errors)
 
-    def _process_image_chunk(self, chunk, estabelecimento_id, dry_run):
-        """Processa um chunk de produtos com imagens."""
+    @staticmethod
+    def _normalize_packaging(raw: str) -> str:
+        """Normaliza tipo de embalagem para tag canônica."""
+        lower = raw.lower().strip()
+        return _PACKAGING_NORMALIZE.get(lower, lower).replace(' ', '')
+
+    def _process_image_chunk(self, chunk, estabelecimento_id, dry_run, overwrite=True):
+        """Apenas tipo de embalagem via IA (sem tags do nome).
+        Se overwrite=False, mescla a tag de embalagem com as tags já existentes."""
         if not tagger_state['running']:
             return
         try:
-            tags_map = self.get_tags_image_batch(chunk)
+            packaging_map = self.get_packaging_batch(chunk)
         except Exception as e:
-            self.log_message(f"Erro no batch de imagens: {e}", "error")
-            self._update_progress(errors=len(chunk))
-            return
+            self.log_message(f"Erro ao identificar embalagens: {e}", "error")
+            packaging_map = {}
 
         updates = []
         updated = skipped = errors = 0
         for j, product in enumerate(chunk):
-            tags = tags_map.get(j, [])
             name = product['name']
-            has_img = bool(product.get('image_url'))
-            suffix = " [img]" if has_img else ""
-            if tags:
-                self.log_message(f"{name} → {', '.join(tags)}{suffix}", "info")
+            packaging = packaging_map.get(j)
+            if packaging:
+                pkg_tag = '#' + self._normalize_packaging(packaging)
+                if overwrite:
+                    tags = [pkg_tag]
+                else:
+                    # Mescla com tags existentes sem duplicar
+                    existing = list(product.get('existing_tags') or [])
+                    if pkg_tag not in existing:
+                        tags = existing + [pkg_tag]
+                    else:
+                        tags = existing
+                self.log_message(f"{name} → {' '.join(tags)}", "info")
                 updates.append((product['id'], tags))
                 updated += 1
             else:
-                self.log_message(f"{name} → sem tags geradas", "warning")
+                self.log_message(f"{name} → embalagem não identificada", "warning")
                 skipped += 1
 
         try:
             self._save_tags_batch(estabelecimento_id, updates, dry_run)
         except Exception as e:
-            self.log_message(f"Erro ao salvar batch: {e}", "error")
+            self.log_message(f"Erro ao salvar: {e}", "error")
             errors += updated
             updated = 0
-
         self._update_progress(updated=updated, skipped=skipped, errors=errors)
