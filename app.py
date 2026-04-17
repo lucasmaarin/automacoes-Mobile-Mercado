@@ -287,7 +287,8 @@ class ProductCategorizerAgent:
         "Responda APENAS com o ID solicitado, sem explicacoes, sem pontuacao extra.\n"
         "\n"
         "REGRA FUNDAMENTAL: a subcategoria escolhida DEVE pertencer logicamente a sua categoria pai. "
-        "Exemplo: se o produto e claramente de Churrasco, escolha uma subcategoria dentro de Churrasco. "
+        "O nome da subcategoria deve ser interpretado SEMPRE dentro do contexto da categoria mae — "
+        "por exemplo, 'Variados' em Brinquedos significa tipos variados de BRINQUEDOS, nao itens de outras naturezas. "
         "Nunca coloque um produto em uma subcategoria de categoria diferente da que faz sentido para o produto. "
         "Quando o nome do produto deixar obvio a qual categoria pertence (ex: 'Espeto de Churrasco', 'Carvao Vegetal', 'Shampoo Pantene'), "
         "use diretamente a categoria e subcategoria correspondente sem tentar encaixar em outra.\n"
@@ -305,7 +306,7 @@ class ProductCategorizerAgent:
         "-- Biscoitos --\n"
         "C3FCL5ditlkuMQnRKg3e (Agua e Sal): biscoito agua e sal.\n"
         "nu3IlKHvf0QKSpdgcc1Y (Cream Cracker): biscoito cream cracker.\n"
-        "N1Eg9yvjpRjdCfpHIijM (Biscoitos Salgados): biscoitos e bolachas salgadas em geral.\n"
+        "N1Eg9yvjpRjdCfpHIijM (Biscoitos Salgados): biscoitos e bolachas salgadas em geral; salgadinhos, chips e snacks de milho, mandioca, batata, amendoim, pipoca industrializada e similares.\n"
         "HHiFHTgXg5m0tCkLj6jx (Cookies): cookies.\n"
         "ItAcxBTHTFPS9d5KKowS (Amanteigados): biscoitos amanteigados.\n"
         "DWlp9bzlMq2Dn5CcaWB1 (Rosquinhas): rosquinhas (acucar, coco, etc.).\n"
@@ -492,21 +493,22 @@ class ProductCategorizerAgent:
         "84XcSQ6ZUymV2DzUTuA9 (Creme Dental): creme dental e pasta de dente.\n"
         "4rlHGNJz4s0Jo68B3vyL (Escovas de Dente): escova de dente.\n"
         "ZcwgC8ccV6F5ehQ5ZfR1 (Saude Bucal): fio dental, enxaguante bucal, fixador de dentadura.\n"
-        "Sti2wBBVLXD4RVTKTlfT (Barba/Depilacao): creme de barbear, lamina de barbear, creme depilatorio.\n"
+        "Sti2wBBVLXD4RVTKTlfT (Barba/Depilacao): creme de barbear, lamina de barbear, creme depilatorio em creme ou gel. NAO inclui folha depiladora (cera fria, strip de depilacao).\n"
         "AeEUGZmYF5qw1ven2J3H (Papel Higienico): papel higienico.\n"
         "eGslz72doMb21Qwkd1XK (Fralda Descartavel): fralda descartavel infantil.\n"
         "v95NpcFm9WiZSCSfyERR (Absorvente): absorvente feminino.\n"
-        "sabonete (Sabonete): sabonete em barra e liquido.\n"
+        "sabonete (Sabonete): use produtos_p_o_corpo para sabonetes — ver abaixo.\n"
         "corpo (Corpo): hidratante corporal, creme para corpo, locao.\n"
         "3Vx5Pqg1DV8GuqmhpfQw (Linha Infantil): produtos de higiene infantil.\n"
         "FfedlcNkjCHFmEL66DW0 (Kits/Higiene): kits de higiene pessoal.\n"
         "higiene_bucal (Higiene Bucal): higiene bucal (pasta, escova, fio dental).\n"
-        "produtos_femininos (Produtos Femininos): produtos femininos de higiene.\n"
+        "produtos_femininos (Produtos Femininos): produtos femininos de higiene — absorvente, folha depiladora (cera fria, strip de depilacao), cera depilatoria em strip.\n"
         "produtos_infantis (Produtos Infantis): produtos infantis de higiene.\n"
         "produtos_masculinos (Produtos Masculinos): produtos masculinos de higiene.\n"
         "produtos_p_cabelo (Produtos para Cabelo/Perf): produtos para cabelo de perfumaria.\n"
-        "produtos_p_o_corpo (Produtos para o Corpo): produtos para o corpo de perfumaria.\n"
+        "produtos_p_o_corpo (Produtos para o Corpo): sabonete (em barra, liquido ou espuma), hidratante corporal, creme para corpo, locao corporal — PRIORIDADE para sabonetes.\n"
         "CI7yNyLuVIvASZc576FC (Mais Itens/Higiene): residual de higiene pessoal.\n"
+        "IMPORTANTE: sabonetes (barra, liquido, espuma) SEMPRE vao para produtos_p_o_corpo, nunca para sabonete.\n"
         "\n"
         "-- Graos (categoria u0Yzu9DRwcchumGYl8R4) --\n"
         "GT3sj93gQpsM05eaVuVO (Amendoim): amendoim cru, torrado e derivados.\n"
@@ -542,7 +544,7 @@ class ProductCategorizerAgent:
         "acucares (ACUCARES): acucar (cristal, refinado, demerara, mascavo).\n"
         "oleos (OLEOS): oleo de soja, girassol, canola.\n"
         "graos (GRAOS/Cereais): graos dentro da categoria Cereais.\n"
-        "farinaceos (FARINACEOS/Cereais): farinaceos dentro da categoria Cereais.\n"
+        "farinaceos (FARINACEOS/Cereais): farinaceos dentro da categoria Cereais — farinhas de trigo, milho, mandioca, rosca, lactea e demais farinhas. PRIORIDADE para produtos do tipo farinha.\n"
         "sal (SAL): sal de cozinha.\n"
         "\n"
         "-- Molhos e Temperos (categoria g9NEgrhPZDKwFVKQ8ahL) --\n"
@@ -759,10 +761,13 @@ class ProductCategorizerAgent:
         "isqueiros_e_fosforos (Isqueiros e Fosforos): isqueiro e fosforo.\n"
         "\n"
         "-- Frente de Caixa (categoria frente_de_caixa) --\n"
-        "vendas_por_impulso (Vendas por Impulso): produtos de frente de caixa, guloseimas e compras por impulso.\n"
+        "vendas_por_impulso (Vendas por Impulso): produtos de frente de caixa, guloseimas e compras por impulso — balas (incluindo Bala Fini), pastilhas, goma de mascar, chiclete, pirulito, drops e similares.\n"
         "\n"
         "-- Ovos de Pascoa (categoria ovos_pascoa) --\n"
-        "ovos_pascoa (Ovos de Pascoa): ovos de pascoa, ovos de chocolate de pascoa.\n"
+        "ovos_pascoa (Ovos de Pascoa): ovos de pascoa e ovos de chocolate de pascoa. TODOS os ovos de pascoa vao para esta categoria/subcategoria.\n"
+        "\n"
+        "-- Natal (categoria natal) --\n"
+        "IMPORTANTE: panetone, chocotone, cesta de natal, vinho de natal, espumante de natal e demais itens tipicos de Natal vao SEMPRE para a categoria natal. Nao e necessaria subcategoria especifica.\n"
         "\n"
         "-- Remedios (categoria remedios) --\n"
         "C0rMpiFQqwhekniy85uC (Mais Procurados/Remedios): remedios e medicamentos mais procurados.\n"
@@ -775,11 +780,31 @@ class ProductCategorizerAgent:
         "moveis (Moveis/Imobilizado): moveis e imobilizados da loja.\n"
         "\n"
         "-- Brinquedos (categoria ChK9lH0vlKvaBJyL4ItB) --\n"
-        "9E4Fg8AQaB9NGcVIIRLq (Brinquedos Modernos e Variados): brinquedos modernos e variados.\n"
+        "9E4Fg8AQaB9NGcVIIRLq (Brinquedos Modernos e Variados): SOMENTE brinquedos — bonecas, carrinhos, jogos de tabuleiro, "
+        "action figures, blocos de montar, pelúcias, jogos eletrônicos portáteis e similares. "
+        "Doces SÓ se forem um produto composto (brinquedo + doce juntos, ex: ovo surpresa, caixinha com brinquedo). "
+        "'Variados' significa tipos variados DE BRINQUEDOS, nao itens de outras categorias.\n"
+        "IMPORTANTE: categoria Brinquedos e EXCLUSIVA para brinquedos. "
+        "NUNCA vao para esta categoria: estojos escolares, granulados (confeito de confeitaria), escovas (de dente, cabelo, etc.), "
+        "conjuntos de potes, wafers e biscoitos, bicarbonato de sodio, kits de escova, chapeus e bonés, "
+        "alimentos (panetone → natal, chocolate avulso, varak → frente_de_caixa, guloseimas → vendas_por_impulso, ovos de pascoa → ovos_pascoa), "
+        "utensilios, decoracoes e qualquer item que nao seja um brinquedo em si, mesmo que tenham apelo infantil ou embalagem tematica. "
+        "A subcategoria deve ser interpretada SEMPRE dentro do contexto da categoria pai (Brinquedos).\n"
         "\n"
         "-- Duvidas (categoria KfmNz06cADwmzQI6UvSf) --\n"
         "ZrXWoj6AFT0OpiIeAz4T (Duvidas): produto com categorizacao incerta ou duvidosa."
     )
+
+    # IDs da categoria/subcategoria "Dúvidas" — tratados como "não encontrado" quando há fallback
+    _DUVIDAS_CAT_ID = 'KfmNz06cADwmzQI6UvSf'
+    _DUVIDAS_SUB_ID = 'ZrXWoj6AFT0OpiIeAz4T'
+
+    def _is_duvidas(self, cat_id, sub_id):
+        return cat_id == self._DUVIDAS_CAT_ID or sub_id == self._DUVIDAS_SUB_ID
+
+    def _filter_duvidas(self, pairs):
+        """Remove pares de Dúvidas da lista de resultados."""
+        return [(c, s) for c, s in pairs if not self._is_duvidas(c, s)]
 
     def __init__(self, db_client):
         self.db = db_client
@@ -956,7 +981,7 @@ class ProductCategorizerAgent:
                         {"role": "user", "content": msg_content}
                     ],
                     max_tokens=max_tokens,
-                    temperature=0.1
+                    temperature=0
                 )
             except _openai_module.RateLimitError as e:
                 if _is_quota_error(e):
@@ -1656,7 +1681,7 @@ class ProductCategorizerAgent:
                 categorizer_targeted_state['progress']['estimated_cost'] = self.estimated_cost
                 self.update_progress_targeted()
 
-            BATCH_SIZE = 20
+            BATCH_SIZE = 10
 
             # ── Fase 1: avalia produto contra TODAS as categorias (batch) ────
             if phase1:
@@ -1686,6 +1711,8 @@ class ProductCategorizerAgent:
                     pid, pname = product['id'], product['name']
                     i = batch_start + j + 1
                     self.log_message_targeted(f"[{i}/{total}] {pname}", "info")
+                    # Dúvidas tratadas como "não encontrado" → vai para fallback
+                    pairs = self._filter_duvidas(pairs) if pairs else []
                     if not pairs:
                         if outros_cat_id and outros_sub_id:
                             self.log_message_targeted(f"  -> {outros_cat_name} / {outros_sub_name} (fallback)", "warning")
@@ -1735,6 +1762,9 @@ class ProductCategorizerAgent:
                     pid, pname = product['id'], product['name']
                     i = p2_offset + batch_start + j + 1
                     self.log_message_targeted(f"[{i}/{total}] {pname}", "info")
+                    # Dúvidas na fase 2 = não pertence à categoria alvo
+                    if fits and self._is_duvidas(target_category_id, subcategory_id):
+                        fits = False
                     if not fits:
                         self.log_message_targeted(f"  -> Nao pertence a '{target_cat['name']}', ignorado", "info")
                         with self._lock:
@@ -1857,7 +1887,7 @@ class ProductCategorizerAgent:
             }
             self.update_progress()
 
-            BATCH_SIZE = 20
+            BATCH_SIZE = 10
             batches = [products[s:s + BATCH_SIZE] for s in range(0, total, BATCH_SIZE)]
             self.log_message(
                 f"Processando {total} produtos em {len(batches)} lotes de {BATCH_SIZE}", "info"
@@ -1897,13 +1927,16 @@ class ProductCategorizerAgent:
                     i = batch_start + idx + 1
                     self.log_message(f"[{i}/{total}] {pname}", "info")
 
+                    # Dúvidas tratadas como "não encontrado" → vai para fallback
+                    pairs = self._filter_duvidas(pairs) if pairs else []
+
                     # Retry individual quando o batch falhou para este produto
                     if not pairs:
                         try:
                             category_id, subcategory_id = self.get_category_and_subcategory(
                                 pname, categories, subcategories
                             )
-                            if category_id and subcategory_id:
+                            if category_id and subcategory_id and not self._is_duvidas(category_id, subcategory_id):
                                 pairs = [(category_id, subcategory_id)]
                         except Exception:
                             pairs = []
