@@ -1215,6 +1215,11 @@
                             <span>Apenas produtos sem categoria</span>
                         </label>
                         <label class="toggle-sw">
+                            <input type="checkbox" id="catReviewCategorized">
+                            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                            <span>Revisar e realocar mal categorizados</span>
+                        </label>
+                        <label class="toggle-sw">
                             <input type="checkbox" id="catIncludeMercearia">
                             <span class="toggle-track"><span class="toggle-thumb"></span></span>
                             <span>Incluir Mercearia</span>
@@ -2118,7 +2123,8 @@
                 const catUseImages = $('catUseImages').checked;
                 const prompt = $('catPromptTa').value.trim();
                 endpoint = API+'/api/categorizer/start';
-                payload = {estabelecimento_id:estId, delay, dry_run:dryRun, only_uncategorized:onlyUncategorized, include_mercearia:includeMercearia, use_images:catUseImages};
+                const reviewCategorized = $('catReviewCategorized').checked;
+                payload = {estabelecimento_id:estId, delay, dry_run:dryRun, only_uncategorized:onlyUncategorized, include_mercearia:includeMercearia, use_images:catUseImages, review_categorized:reviewCategorized};
                 if(filterCategory) payload.filter_category_id = filterCategory;
                 if(filterSubcat) payload.filter_subcategory_id = filterSubcat;
                 if(prompt) payload.custom_prompt = prompt;

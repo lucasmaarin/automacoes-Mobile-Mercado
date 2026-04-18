@@ -787,12 +787,11 @@ class ProductCategorizerAgent:
         "IMPORTANTE: categoria Brinquedos e EXCLUSIVA para brinquedos. "
         "NUNCA vao para esta categoria: estojos escolares, granulados (confeito de confeitaria), escovas (de dente, cabelo, etc.), "
         "conjuntos de potes, wafers e biscoitos, bicarbonato de sodio, kits de escova, chapeus e bonés, "
+        "kits de agulha/costura/bordado, abridor de lata, abridor de garrafa, utensilios de cozinha ou de uso domestico, ferramentas, "
+        "calcados (botina, bota, tenis, sandalia, sapato), vestuario e acessorios de moda, "
         "alimentos (panetone → natal, chocolate avulso, varak → frente_de_caixa, guloseimas → vendas_por_impulso, ovos de pascoa → ovos_pascoa), "
         "utensilios, decoracoes e qualquer item que nao seja um brinquedo em si, mesmo que tenham apelo infantil ou embalagem tematica. "
-        "A subcategoria deve ser interpretada SEMPRE dentro do contexto da categoria pai (Brinquedos).\n"
-        "\n"
-        "-- Duvidas (categoria KfmNz06cADwmzQI6UvSf) --\n"
-        "ZrXWoj6AFT0OpiIeAz4T (Duvidas): produto com categorizacao incerta ou duvidosa."
+        "A subcategoria deve ser interpretada SEMPRE dentro do contexto da categoria pai (Brinquedos)."
     )
 
     # IDs da categoria/subcategoria "Dúvidas" — tratados como "não encontrado" quando há fallback
@@ -1412,6 +1411,19 @@ class ProductCategorizerAgent:
         """Atualiza produto com 1 ou 2 pares (cat_id, sub_id)."""
         if not pairs:
             return False
+        _log = log_fn or self.log_message_targeted
+        valid_pairs = []
+        for c, s in pairs:
+            if c not in cat_by_id:
+                _log(f"  [ignorado] categoria '{c}' nao existe neste estabelecimento", "warning")
+                continue
+            if s not in sub_by_id:
+                _log(f"  [ignorado] subcategoria '{s}' nao existe neste estabelecimento", "warning")
+                continue
+            valid_pairs.append((c, s))
+        if not valid_pairs:
+            return False
+        pairs = valid_pairs
         cat_ids = [c for c, _ in pairs]
         sub_ids = [s for _, s in pairs]
         shelf_ids = [f"{c}_{s}" for c, s in pairs]
@@ -1431,7 +1443,6 @@ class ProductCategorizerAgent:
             'shelves': shelves,
             'shelvesIds': shelf_ids
         }
-        _log = log_fn or self.log_message_targeted
         if dry_run:
             labels = ', '.join(
                 f"{cat_by_id.get(c,{}).get('name',c)} / {sub_by_id.get(s,{}).get('name',s)}"
@@ -1805,7 +1816,8 @@ class ProductCategorizerAgent:
     def run_categorization(self, estabelecimento_id, delay_between_products=0.5, dry_run=False,
                            only_uncategorized=False, filter_category_id=None,
                            include_mercearia=False, filter_subcategory_id=None,
-                           use_images=False, fallback_category_id=None, fallback_subcategory_id=None):
+                           use_images=False, fallback_category_id=None, fallback_subcategory_id=None,
+                           review_categorized=False):
         try:
             self.tokens_used = 0
             self.estimated_cost = 0
@@ -1857,9 +1869,12 @@ class ProductCategorizerAgent:
                 allowed_cat_ids = {c['id'] for c in categories}
                 subcategories = [s for s in subcategories if s.get('categoryId') in allowed_cat_ids]
 
+            if review_categorized:
+                self.log_message("Modo revisao: todos os produtos serao avaliados e realocados se necessario", "info")
             if use_images:
                 self.log_message("Analise de imagens ativada", "info")
-            products = self.load_products(estabelecimento_id, only_uncategorized,
+            _only_uncat = only_uncategorized and not review_categorized
+            products = self.load_products(estabelecimento_id, _only_uncat,
                                           filter_category_id, filter_subcategory_id, use_images)
             if not products:
                 self.log_message("Nenhum produto encontrado com os filtros aplicados", "warning")
@@ -1957,11 +1972,32 @@ class ProductCategorizerAgent:
                                 categorizer_state['progress']['errors'] += 1
                                 categorizer_state['progress']['processed'] += 1
                         else:
-                            labels = ' + '.join(
-                                f"{cat_by_id.get(c,{}).get('name',c)} / {sub_by_id.get(s,{}).get('name',s)}"
-                                for c, s in pairs
-                            )
-                            self.log_message(f"  -> {labels}", "success")
+                            # No modo revisao, pula produtos que já estão na categoria correta
+                            if review_categorized:
+                                current_cats = set(product.get('categories_ids') or [])
+                                current_subs = set(product.get('subcategories_ids') or [])
+                                new_cats = {c for c, _ in pairs}
+                                new_subs = {s for _, s in pairs}
+                                if new_cats == current_cats and new_subs == current_subs:
+                                    self.log_message(f"  [ok] ja esta na categoria correta", "info")
+                                    categorizer_state['progress']['processed'] += 1
+                                    self.update_progress()
+                                    continue
+                                old_label = ', '.join(
+                                    f"{cat_by_id.get(c,{}).get('name',c)}/{sub_by_id.get(s,{}).get('name',s)}"
+                                    for c in current_cats for s in current_subs
+                                ) or 'sem categoria'
+                                new_label = ' + '.join(
+                                    f"{cat_by_id.get(c,{}).get('name',c)}/{sub_by_id.get(s,{}).get('name',s)}"
+                                    for c, s in pairs
+                                )
+                                self.log_message(f"  REALOCADO: {old_label} → {new_label}", "warning")
+                            else:
+                                labels = ' + '.join(
+                                    f"{cat_by_id.get(c,{}).get('name',c)} / {sub_by_id.get(s,{}).get('name',s)}"
+                                    for c, s in pairs
+                                )
+                                self.log_message(f"  -> {labels}", "success")
                             if len(pairs) == 1:
                                 c, s = pairs[0]
                                 ok = self.update_product_categories(
@@ -2853,6 +2889,7 @@ def start_categorization():
     custom_prompt = data.get('custom_prompt', '').strip() or None
     fallback_category_id = data.get('fallback_category_id', '').strip() or None
     fallback_subcategory_id = data.get('fallback_subcategory_id', '').strip() or None
+    review_categorized = bool(data.get('review_categorized', False))
 
     # Sobrescreve o prompt apenas para esta execucao (restaura ao final)
     original_prompt = categorizer.cat_system_prompt
@@ -2870,6 +2907,7 @@ def start_categorization():
                 use_images=use_images,
                 fallback_category_id=fallback_category_id,
                 fallback_subcategory_id=fallback_subcategory_id,
+                review_categorized=review_categorized,
             )
         finally:
             if custom_prompt:
