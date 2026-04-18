@@ -1273,7 +1273,7 @@ class ProductCategorizerAgent:
         "IMPORTANTE: Use EXCLUSIVAMENTE os IDs exatos da lista fornecida. Nao invente IDs."
     )
 
-    def get_categories_batch_multi(self, products, categories, subcategories):
+    def get_categories_batch_multi(self, products, categories, subcategories, force_relocate=False):
         """Para o modo realocar: retorna ate 2 (cat_id, sub_id) por produto.
         Inclui categoria atual de cada produto no contexto."""
         cat_by_id = {c['id']: c for c in categories}
@@ -1296,13 +1296,25 @@ class ProductCategorizerAgent:
             if cat_name or sub_name:
                 ctx = f" [atual: {cat_name}{(' / ' + sub_name) if sub_name else ''}]"
             lines.append(f"{i+1}. {p['name']}{ctx}")
-        header = (
-            f"SUBCATEGORIAS VALIDAS (id|nome|categoria):\n{subs_text}\n\n"
-            f"Para cada produto abaixo, escolha 1 ou 2 subcategorias que melhor combinam com ele.\n"
-            f"A categoria atual do produto e exibida entre colchetes como referencia.\n"
-            f"Retorne o ID exato de cada subcategoria — a categoria sera derivada automaticamente.\n\n"
-            f"Produtos:\n" + "\n".join(lines)
-        )
+        if force_relocate:
+            instruction = (
+                f"SUBCATEGORIAS VALIDAS (id|nome|categoria):\n{subs_text}\n\n"
+                f"ATENCAO: os produtos abaixo estao INCORRETAMENTE categorizados. "
+                f"A categoria entre colchetes esta ERRADA e voce deve ignorá-la como sugestao. "
+                f"Analise somente o NOME do produto e escolha 1 ou 2 subcategorias corretas da lista acima. "
+                f"Siga rigorosamente as regras do prompt — se um produto nao e brinquedo, NAO use subcategorias de Brinquedos.\n"
+                f"Retorne o ID exato de cada subcategoria — a categoria sera derivada automaticamente.\n\n"
+                f"Produtos:\n" + "\n".join(lines)
+            )
+        else:
+            instruction = (
+                f"SUBCATEGORIAS VALIDAS (id|nome|categoria):\n{subs_text}\n\n"
+                f"Para cada produto abaixo, escolha 1 ou 2 subcategorias que melhor combinam com ele.\n"
+                f"A categoria atual do produto e exibida entre colchetes como referencia.\n"
+                f"Retorne o ID exato de cada subcategoria — a categoria sera derivada automaticamente.\n\n"
+                f"Produtos:\n" + "\n".join(lines)
+            )
+        header = instruction
         results = [[] for _ in products]
         try:
             raw = self._call_openai(header, max_tokens=50 * len(products),
@@ -1708,8 +1720,8 @@ class ProductCategorizerAgent:
                 names = [p['name'] for p in batch]
                 self.update_progress_targeted({'id': batch[0]['id'], 'name': names[0], 'index': batch_start + 1, 'total': total})
                 try:
-                    # Modo realocar: batch multi (até 2 cats/subs por produto, com contexto da cat atual)
-                    multi_results = self.get_categories_batch_multi(batch, categories, subcategories)
+                    # Modo realocar: batch multi com force_relocate — IA ignora categoria atual
+                    multi_results = self.get_categories_batch_multi(batch, categories, subcategories, force_relocate=True)
                 except Exception as e:
                     self.log_message_targeted(f"  Erro OpenAI no batch fase 1: {e}", "error")
                     with self._lock:
@@ -1930,6 +1942,9 @@ class ProductCategorizerAgent:
                 if include_mercearia:
                     # Batch com duas camadas: principal (nao-mercearia) + mercearia opcional
                     multi_results = self.get_categories_batch_with_mercearia(names, categories, subcategories)
+                elif review_categorized:
+                    # Revisão: usa batch_multi com force_relocate para avaliar sem viés da categoria atual
+                    multi_results = self.get_categories_batch_multi(batch, categories, subcategories, force_relocate=True)
                 else:
                     image_urls = [p.get('image_url') for p in batch] if use_images else None
                     single_results = self.get_categories_batch(names, categories, subcategories, image_urls)
