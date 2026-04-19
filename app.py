@@ -3145,10 +3145,12 @@ def tagger_start():
         dry_run = bool(data.get('dry_run', False))
         use_images = bool(data.get('use_images', False))
         overwrite = bool(data.get('overwrite', False))
+        tag_characteristics = bool(data.get('tag_characteristics', False))
+        only_untagged = bool(data.get('only_untagged', False))
         categories = data.get('categories', [])
 
         def run_thread():
-            tagger.run_tagging(estabelecimento_id, categories, delay, dry_run, use_images, overwrite)
+            tagger.run_tagging(estabelecimento_id, categories, delay, dry_run, use_images, overwrite, tag_characteristics, only_untagged)
 
         t = Thread(target=run_thread)
         t.daemon = True

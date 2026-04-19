@@ -45,7 +45,7 @@ Analise o nome do produto atual e sugira um nome MELHOR que seja:
 - Siga esta estrutura: [Produto principal] + [Marca/variante] + [Peso/quantidade]
 - Nao ultrapassar 7 tokens
 - Coloque os acentos das respectivas palavras, exemplo: Purissima > Puríssima, Agua > Água
-- L de Litros manter maiusculo, mas ml minusculo
+- L de Litros manter maiusculo, mas ml minusculo. LT tambem significa Litros — converta LT para L maiusculo (ex: 1LT > 1L, 1,5LT > 1,5L)
 
 Exemplos de transformacoes que voce deve fazer:
 - KETCHUP HEINZ 1.033KG -> Ketchup Heinz 1.033Kg
@@ -144,7 +144,6 @@ Palavras ou abreviacoes para retirar completamente do nome:
 - 6x55gr
 - PET
 - LF
-- LT
 - FD/0001/UN
 - GOU
 - QD

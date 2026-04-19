@@ -31,7 +31,7 @@ _STOP_WORDS = {
 # Tipos válidos de embalagem que a IA pode retornar
 _PACKAGING_TYPES = {
     'garrafa', 'lata', 'caixinha', 'caixa', 'sache', 'sachê', 'pote',
-    'copo', 'bandeja', 'bag', 'vidro', 'tetra pak', 'tetrapak', 'envelope',
+    'copo', 'bandeja', 'vidro', 'tetra pak', 'tetrapak', 'envelope',
     'bisnaga', 'barrica', 'frasco', 'longa vida', 'longavida', 'embalagem',
     'saco', 'saquinho'
 }
@@ -77,11 +77,63 @@ class ProductTagger:
     INPUT_COST  = 0.00015 / 1000   # gpt-4o-mini
     OUTPUT_COST = 0.0006  / 1000
 
+    # Tags de características válidas — a IA só pode usar estas
+    _CHARACTERISTICS_TAGS = [
+        # Composição / Origem
+        'derivado_do_leite', 'origem_animal', 'origem_vegetal', 'integral',
+        'desnatado', 'organico', 'natural', 'ultraprocessado',
+        # Estilo de vida / Dieta
+        'vegano', 'vegetariano', 'fitness', 'saudavel', 'low_carb',
+        'sem_gluten', 'sem_lactose', 'sem_acucar', 'diet', 'light',
+        # Restrições / Alergênicos
+        'contem_lactose', 'contem_gluten', 'contem_acucar', 'contem_alcool',
+        'contem_cafeina', 'contem_amendoim', 'contem_soja',
+        # Tipo Funcional
+        'alcoolico', 'nao_alcoolico', 'energetico', 'hidratante',
+        'estimulante', 'calmante',
+        # Uso / Contexto
+        'limpeza', 'higiene_pessoal', 'consumo_imediato', 'preparo_culinario',
+        'infantil', 'pet',
+        # Risco / Logística
+        'inflamavel', 'perecivel', 'congelado', 'refrigerado', 'fragil',
+    ]
+
+    _CHARACTERISTICS_PROMPT = (
+        "Voce recebera uma lista de nomes de produtos de supermercado.\n"
+        "Para cada produto, retorne APENAS as tags de caracteristicas que voce tem CERTEZA ABSOLUTA que se aplicam, "
+        "baseando-se exclusivamente no nome do produto.\n"
+        "Se tiver qualquer duvida sobre uma tag, NAO a inclua.\n"
+        "Use SOMENTE tags da lista fornecida — nao invente outras.\n"
+        "Responda SOMENTE com JSON: {\"1\": [\"tag1\", \"tag2\"], \"2\": [], ...}\n"
+        "Se nenhuma tag se aplica com certeza, retorne lista vazia para aquele produto.\n"
+        "Sem markdown, sem explicacoes.\n\n"
+        "TAGS VALIDAS:\n"
+        "Composicao/Origem: derivado_do_leite, origem_animal, origem_vegetal, integral, desnatado, organico, natural, ultraprocessado\n"
+        "Dieta: vegano, vegetariano, fitness, saudavel, low_carb, sem_gluten, sem_lactose, sem_acucar, diet, light\n"
+        "Alergenos: contem_lactose, contem_gluten, contem_acucar, contem_alcool, contem_cafeina, contem_amendoim, contem_soja\n"
+        "Funcional: alcoolico, nao_alcoolico, energetico, hidratante, estimulante, calmante\n"
+        "Uso: limpeza, higiene_pessoal, consumo_imediato, preparo_culinario, infantil, pet\n"
+        "Logistica: inflamavel, perecivel, congelado, refrigerado, fragil\n"
+    )
+
     _PACKAGING_PROMPT = (
-        "Analise as imagens dos produtos abaixo e identifique APENAS o tipo de embalagem de cada um.\n"
-        "Responda SOMENTE com JSON: chave = número do produto (string), valor = tipo de embalagem (string) ou null se não conseguir identificar.\n"
-        "Tipos válidos: Garrafa, Lata, Caixinha, Caixa, Sache, Pote, Copo, Bandeja, Bag, Vidro, TetraPak, Envelope, Bisnaga, Frasco, Saco, Saquinho.\n"
-        'Exemplo: {"1": "Garrafa", "2": "Lata", "3": null}'
+        "Voce e um agente especializado em catalogar produtos de supermercado atraves de tags de busca.\n"
+        "Voce recebera o nome comercial e a foto de cada produto.\n"
+        "Regra absoluta: so aplique uma tag se houver evidencia explicita no nome ou na foto. Nunca suponha, nunca infira alem do visivel.\n\n"
+        "Gere tags nas seguintes categorias, nesta ordem:\n"
+        "1. Categoria generica — o tipo de produto em sua forma mais simples. Ex: #agua, #biscoito, #molho.\n"
+        "2. Marca — extraia do nome comercial. Se nao estiver no nome, extraia da foto. Minusculas, sem acento, sem espaco. Ex: #nissin, #barilla. Se nao identificar, omita.\n"
+        "3. Especificadores — sabor, variante, caracteristica declarada no nome ou visivel na foto. Ex: #sem gas, #calabresa, #picante. Minusculas, sem acento, palavras compostas separadas por espaco.\n"
+        "4. Embalagem — identifique pelo formato e material visiveis na foto. Use o nome como apoio secundario. Se nao for possivel identificar com certeza, omita.\n"
+        "5. Quantidade — exatamente como aparece no nome: #85g, #1-5l, #800g. Se nao aparecer no nome, omita.\n"
+        "6. Apelidos populares — somente termos consagrados: #lamen para macarray instantaneo, #salgadinho para snacks. Se nao houver apelido obvio, omita.\n"
+        "7. Contexto de uso — somente se evidente: #infantil se o rotulo indicar faixa etaria, #preparo culinario para extratos e molhos. Se houver duvida, omita.\n\n"
+        "Se a foto estiver em baixa resolucao, cortada ou ilegivel a ponto de impedir identificacao de embalagem ou marca, "
+        "gere as tags possiveis pelo nome e adicione #revisar ao final.\n\n"
+        "Formato de saida: JSON onde a chave e o numero do produto (string) e o valor e uma string com as tags separadas por espaco.\n"
+        "Todas as tags em minusculas, sem acento, palavras compostas separadas por espaco, iniciando com #.\n"
+        "Nenhum texto adicional. Nenhuma explicacao.\n"
+        'Exemplo: {"1": "#agua #crystal #sem gas #garrafa #500ml", "2": "#biscoito #oreo #recheado #pacote #144g", "3": null}'
     )
 
     def __init__(self, db_client):
@@ -167,12 +219,12 @@ class ProductTagger:
         return None
 
     # ------------------------------------------------------------------
-    # API — apenas para embalagem (imagem)
+    # API — tags completas por imagem + nome
     # ------------------------------------------------------------------
 
     def get_packaging_batch(self, products: list, max_retries: int = 8) -> dict:
-        """Retorna {index: 'TipoEmbalagem'} apenas com base nas imagens."""
-        user_content = [{"type": "text", "text": self._PACKAGING_PROMPT + "\n\n"}]
+        """Retorna {index: ['#tag1', '#tag2', ...]} com todas as tags geradas pelo novo prompt."""
+        user_content = [{"type": "text", "text": self._PACKAGING_PROMPT + "\n\nProdutos:\n"}]
 
         for i, p in enumerate(products):
             user_content.append({"type": "text", "text": f"Produto {i + 1}: {p['name']}"})
@@ -189,15 +241,59 @@ class ProductTagger:
                 resp = _ext.openai_client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[{"role": "user", "content": user_content}],
-                    max_tokens=200,
-                    temperature=0.1
+                    max_tokens=80 * len(products),
+                    temperature=0
                 )
                 self._record_usage(resp.usage)
                 data = json.loads(self._clean_json(resp.choices[0].message.content))
                 result = {}
                 for k, v in data.items():
+                    try:
+                        idx = int(k) - 1
+                    except (ValueError, TypeError):
+                        continue
                     if v and isinstance(v, str):
-                        result[int(k) - 1] = v.strip()
+                        tags = [t.strip().replace('-', ' ') for t in v.split() if t.strip().startswith('#')]
+                        if tags:
+                            result[idx] = tags
+                return result
+            except _openai_module.RateLimitError as e:
+                if _ext._is_quota_error(e):
+                    _ext.emit_quota_exceeded()
+                    raise
+                wait = _parse_rate_limit_wait(e)
+                self.log_message(f"Rate limit, aguardando {wait:.1f}s...", "warning")
+                time.sleep(wait)
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                else:
+                    raise
+        return {}
+
+    def get_characteristics_batch(self, products: list, max_retries: int = 8) -> dict:
+        """Retorna {index: ['tag1', 'tag2']} com características identificadas pelo nome."""
+        lines = "\n".join(f"{i+1}. {p['name']}" for i, p in enumerate(products))
+        prompt = self._CHARACTERISTICS_PROMPT + f"\nProdutos:\n{lines}"
+        valid = set(self._CHARACTERISTICS_TAGS)
+        for attempt in range(max_retries):
+            try:
+                resp = _ext.openai_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=100 * len(products),
+                    temperature=0
+                )
+                self._record_usage(resp.usage)
+                data = json.loads(self._clean_json(resp.choices[0].message.content))
+                result = {}
+                for k, v in data.items():
+                    try:
+                        idx = int(k) - 1
+                    except (ValueError, TypeError):
+                        continue
+                    if 0 <= idx < len(products) and isinstance(v, list):
+                        result[idx] = [t for t in v if t in valid]
                 return result
             except _openai_module.RateLimitError as e:
                 if _ext._is_quota_error(e):
@@ -265,7 +361,8 @@ class ProductTagger:
 
     def run_tagging(self, estabelecimento_id: str, categories: list,
                     delay: float = 0, dry_run: bool = False,
-                    use_images: bool = False, overwrite: bool = False):
+                    use_images: bool = False, overwrite: bool = False,
+                    tag_characteristics: bool = False, only_untagged: bool = False):
         tagger_state['running'] = True
         tagger_state['current_product'] = None
         tagger_state['progress'] = {
@@ -294,23 +391,21 @@ class ProductTagger:
             if dry_run:
                 self.log_message("MODO DRY RUN — nenhuma alteração será salva", "warning")
 
-            to_process = []
-            skipped_count = 0
-            for p in products:
-                if p['existing_tags'] and not overwrite:
-                    if use_images:
-                        # Modo imagem: processa mesmo com tags existentes (vai mesclar embalagem)
-                        to_process.append(p)
-                    else:
-                        skipped_count += 1
-                else:
-                    to_process.append(p)
+            if only_untagged:
+                to_process = [p for p in products if not p['existing_tags']]
+                skipped = len(products) - len(to_process)
+                if skipped:
+                    self._update_progress(skipped=skipped)
+                    self.log_message(f"{skipped} produtos ignorados (já têm tags)", "info")
+            else:
+                to_process = list(products)
 
-            if skipped_count:
-                self._update_progress(skipped=skipped_count)
-                self.log_message(f"{skipped_count} produtos ignorados (já têm tags)", "info")
-
-            mode = "com imagens (IA apenas para embalagem)" if use_images else "sem IA (palavras do nome)"
+            if tag_characteristics:
+                mode = "IA — características do produto"
+            elif use_images:
+                mode = "IA — embalagem por imagem"
+            else:
+                mode = "palavras do nome"
             self.log_message(
                 f"{len(to_process)} produtos para processar — {mode}, "
                 f"{self.MAX_WORKERS} workers paralelos",
@@ -318,14 +413,21 @@ class ProductTagger:
             )
             self._emit_progress()
 
-            if use_images:
+            if tag_characteristics:
+                def _char_chunk(chunk, est_id, dr):
+                    return self._process_characteristics_chunk(chunk, est_id, dr, overwrite)
+                self._run_parallel(to_process, estabelecimento_id, dry_run,
+                                   20, _char_chunk)
+            elif use_images:
                 def _image_chunk(chunk, est_id, dr):
                     return self._process_image_chunk(chunk, est_id, dr, overwrite)
                 self._run_parallel(to_process, estabelecimento_id, dry_run,
                                    self.IMAGE_BATCH_SIZE, _image_chunk)
             else:
+                def _name_chunk(chunk, est_id, dr):
+                    return self._process_name_chunk(chunk, est_id, dr, overwrite)
                 self._run_parallel(to_process, estabelecimento_id, dry_run,
-                                   500, self._process_name_chunk)
+                                   500, _name_chunk)
 
         except Exception as e:
             self.log_message(f"Erro fatal: {e}", "error")
@@ -372,22 +474,83 @@ class ProductTagger:
                 except Exception as e:
                     self.log_message(f"Erro em chunk: {e}", "error")
 
-    def _process_name_chunk(self, chunk, estabelecimento_id, dry_run):
-        """Tags geradas diretamente das palavras do nome — sem IA."""
+    def _process_name_chunk(self, chunk, estabelecimento_id, dry_run, overwrite=False):
+        """Tags geradas diretamente das palavras do nome — sem IA.
+        overwrite=False → mescla com tags existentes (acrescenta sem remover).
+        overwrite=True  → substitui, mas pula se as novas tags já existem todas no produto."""
         if not tagger_state['running']:
             return
         updates = []
         updated = skipped = errors = 0
         for product in chunk:
             name = product['name']
-            tags = _tags_from_name(name)
-            if tags:
-                self.log_message(f"{name} → {' '.join(tags)}", "info")
-                updates.append((product['id'], tags))
-                updated += 1
-            else:
+            new_tags = _tags_from_name(name)
+            if not new_tags:
                 self.log_message(f"{name} → sem tags geradas", "warning")
                 skipped += 1
+                continue
+            existing = list(product.get('existing_tags') or [])
+            if overwrite:
+                # Pula se todas as novas tags já existem no produto
+                if all(t in existing for t in new_tags):
+                    self.log_message(f"{name} → tags já existem, pulando", "info")
+                    skipped += 1
+                    continue
+                final_tags = new_tags
+            else:
+                # Mescla: acrescenta apenas tags que ainda não existem
+                to_add = [t for t in new_tags if t not in existing]
+                if not to_add:
+                    self.log_message(f"{name} → nenhuma tag nova para acrescentar, pulando", "info")
+                    skipped += 1
+                    continue
+                final_tags = existing + to_add
+            self.log_message(f"{name} → {' '.join(final_tags)}", "info")
+            updates.append((product['id'], final_tags))
+            updated += 1
+        try:
+            self._save_tags_batch(estabelecimento_id, updates, dry_run)
+        except Exception as e:
+            self.log_message(f"Erro ao salvar: {e}", "error")
+            errors += updated
+            updated = 0
+        self._update_progress(updated=updated, skipped=skipped, errors=errors)
+
+    def _process_characteristics_chunk(self, chunk, estabelecimento_id, dry_run, overwrite=False):
+        """Tags de características via IA (sem imagem). Mescla ou substitui conforme overwrite."""
+        if not tagger_state['running']:
+            return
+        try:
+            char_map = self.get_characteristics_batch(chunk)
+        except Exception as e:
+            self.log_message(f"Erro ao identificar características: {e}", "error")
+            char_map = {}
+
+        updates = []
+        updated = skipped = errors = 0
+        for j, product in enumerate(chunk):
+            char_tags = ['#' + t.replace('_', ' ') for t in (char_map.get(j) or [])]
+            if not char_tags:
+                self.log_message(f"{product['name']} → nenhuma característica identificada", "info")
+                skipped += 1
+                continue
+            existing = list(product.get('existing_tags') or [])
+            if overwrite:
+                if all(t in existing for t in char_tags):
+                    self.log_message(f"{product['name']} → tags já existem, pulando", "info")
+                    skipped += 1
+                    continue
+                final_tags = char_tags
+            else:
+                to_add = [t for t in char_tags if t not in existing]
+                if not to_add:
+                    self.log_message(f"{product['name']} → nenhuma tag nova para acrescentar, pulando", "info")
+                    skipped += 1
+                    continue
+                final_tags = existing + to_add
+            self.log_message(f"{product['name']} → {' '.join(final_tags)}", "info")
+            updates.append((product['id'], final_tags))
+            updated += 1
         try:
             self._save_tags_batch(estabelecimento_id, updates, dry_run)
         except Exception as e:
@@ -403,38 +566,43 @@ class ProductTagger:
         return _PACKAGING_NORMALIZE.get(lower, lower).replace(' ', '')
 
     def _process_image_chunk(self, chunk, estabelecimento_id, dry_run, overwrite=True):
-        """Apenas tipo de embalagem via IA (sem tags do nome).
-        Se overwrite=False, mescla a tag de embalagem com as tags já existentes."""
+        """Tags completas via IA (nome + imagem).
+        overwrite=True → substitui tags existentes.
+        overwrite=False → mescla com tags existentes sem duplicar."""
         if not tagger_state['running']:
             return
         try:
-            packaging_map = self.get_packaging_batch(chunk)
+            tags_map = self.get_packaging_batch(chunk)
         except Exception as e:
-            self.log_message(f"Erro ao identificar embalagens: {e}", "error")
-            packaging_map = {}
+            self.log_message(f"Erro ao gerar tags: {e}", "error")
+            tags_map = {}
 
         updates = []
         updated = skipped = errors = 0
         for j, product in enumerate(chunk):
             name = product['name']
-            packaging = packaging_map.get(j)
-            if packaging:
-                pkg_tag = '#' + self._normalize_packaging(packaging)
-                if overwrite:
-                    tags = [pkg_tag]
-                else:
-                    # Mescla com tags existentes sem duplicar
-                    existing = list(product.get('existing_tags') or [])
-                    if pkg_tag not in existing:
-                        tags = existing + [pkg_tag]
-                    else:
-                        tags = existing
-                self.log_message(f"{name} → {' '.join(tags)}", "info")
-                updates.append((product['id'], tags))
-                updated += 1
-            else:
-                self.log_message(f"{name} → embalagem não identificada", "warning")
+            new_tags = tags_map.get(j)
+            if not new_tags:
+                self.log_message(f"{name} → nenhuma tag gerada", "warning")
                 skipped += 1
+                continue
+            existing = list(product.get('existing_tags') or [])
+            if overwrite:
+                if all(t in existing for t in new_tags):
+                    self.log_message(f"{name} → tags já existem, pulando", "info")
+                    skipped += 1
+                    continue
+                final_tags = new_tags
+            else:
+                to_add = [t for t in new_tags if t not in existing]
+                if not to_add:
+                    self.log_message(f"{name} → nenhuma tag nova, pulando", "info")
+                    skipped += 1
+                    continue
+                final_tags = existing + to_add
+            self.log_message(f"{name} → {' '.join(final_tags)}", "info")
+            updates.append((product['id'], final_tags))
+            updated += 1
 
         try:
             self._save_tags_batch(estabelecimento_id, updates, dry_run)

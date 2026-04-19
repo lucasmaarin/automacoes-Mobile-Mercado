@@ -1062,11 +1062,6 @@
                         <span>Modo de teste (Dry Run)</span>
                     </label>
                     <label class="toggle-sw">
-                        <input type="checkbox" id="renUseImages">
-                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                        <span>Analisar imagens dos produtos</span>
-                    </label>
-                    <label class="toggle-sw">
                         <input type="checkbox" id="renOnlyRaw">
                         <span class="toggle-track"><span class="toggle-thumb"></span></span>
                         <span>Apenas nomes brutos (todo maiúsculo / abreviações)</span>
@@ -1223,11 +1218,6 @@
                             <input type="checkbox" id="catIncludeMercearia">
                             <span class="toggle-track"><span class="toggle-thumb"></span></span>
                             <span>Incluir Mercearia</span>
-                        </label>
-                        <label class="toggle-sw">
-                            <input type="checkbox" id="catUseImages">
-                            <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                            <span>Analisar imagens dos produtos</span>
                         </label>
                         <label class="toggle-sw" id="catRelocateRow" style="display:none">
                             <input type="checkbox" id="catRelocate" checked>
@@ -1475,6 +1465,16 @@
                         <input type="checkbox" id="tagOverwrite">
                         <span class="toggle-track"><span class="toggle-thumb"></span></span>
                         <span>Sobrescrever tags existentes</span>
+                    </label>
+                    <label class="toggle-sw">
+                        <input type="checkbox" id="tagCharacteristics">
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                        <span>Taggear características do produto (IA)</span>
+                    </label>
+                    <label class="toggle-sw">
+                        <input type="checkbox" id="tagOnlyUntagged">
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                        <span>Apenas produtos sem tag</span>
                     </label>
                 </div>
             </div>
@@ -1857,8 +1857,7 @@
             btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Iniciando...';
 
             const filterSubcatId = $('renSubcatSel').value || null;
-            const useImages = $('renUseImages').checked;
-            const payload = { estabelecimento_id:estId, delay, dry_run:dryRun, categories:cats, use_images:useImages };
+            const payload = { estabelecimento_id:estId, delay, dry_run:dryRun, categories:cats };
             if(filterSubcatId) payload.filter_subcategory_id = filterSubcatId;
             try {
                 const r = await fetch(API+'/api/renamer/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -2120,11 +2119,10 @@
                 if(filterSubcat) payload.filter_subcategory_id = filterSubcat;
             } else {
                 const onlyUncategorized = $('catOnlyUncategorized').checked;
-                const catUseImages = $('catUseImages').checked;
                 const prompt = $('catPromptTa').value.trim();
                 endpoint = API+'/api/categorizer/start';
                 const reviewCategorized = $('catReviewCategorized').checked;
-                payload = {estabelecimento_id:estId, delay, dry_run:dryRun, only_uncategorized:onlyUncategorized, include_mercearia:includeMercearia, use_images:catUseImages, review_categorized:reviewCategorized};
+                payload = {estabelecimento_id:estId, delay, dry_run:dryRun, only_uncategorized:onlyUncategorized, include_mercearia:includeMercearia, review_categorized:reviewCategorized};
                 if(filterCategory) payload.filter_category_id = filterCategory;
                 if(filterSubcat) payload.filter_subcategory_id = filterSubcat;
                 if(prompt) payload.custom_prompt = prompt;
@@ -2419,6 +2417,8 @@
                 dry_run: $('tagDryRun').checked,
                 use_images: $('tagUseImages').checked,
                 overwrite: $('tagOverwrite').checked,
+                tag_characteristics: $('tagCharacteristics').checked,
+                only_untagged: $('tagOnlyUntagged').checked,
                 categories: this.getSelectedCategories(),
                 delay: 0
             };
