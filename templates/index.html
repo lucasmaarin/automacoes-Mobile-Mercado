@@ -1462,6 +1462,11 @@
                         <span>Analisar imagens das embalagens</span>
                     </label>
                     <label class="toggle-sw">
+                        <input type="checkbox" id="tagBrands">
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                        <span>Identificar marcas pelas imagens (IA)</span>
+                    </label>
+                    <label class="toggle-sw">
                         <input type="checkbox" id="tagOverwrite">
                         <span class="toggle-track"><span class="toggle-thumb"></span></span>
                         <span>Sobrescrever tags existentes</span>
@@ -1499,6 +1504,23 @@
                         <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
                         <b>Nenhuma categoria carregada</b>
                         <span>Deixe vazio para processar todos os produtos,<br>ou carregue para filtrar por categoria</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="prompt-section">
+                <div class="prompt-hdr" id="tagPromptHdr" onclick="Tagger.togglePrompt()">
+                    <span style="display:flex;align-items:center;gap:7px">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.55"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        Prompt de imagens <span class="dot" id="tagPromptDot" title="Prompt modificado"></span>
+                    </span>
+                    <span class="arr">&#9660;</span>
+                </div>
+                <div class="prompt-bd" id="tagPromptBd" style="display:none">
+                    <textarea class="prompt-ta" id="tagPromptTa" placeholder="Carregando..." oninput="Tagger.onPromptChange()" spellcheck="false"></textarea>
+                    <div class="prompt-ft">
+                        <button class="btn btn-p" onclick="Tagger.savePrompt()">Salvar no Firestore</button>
+                        <button class="btn btn-ghost" onclick="Tagger.restorePrompt()">Restaurar Padrão</button>
                     </div>
                 </div>
             </div>
@@ -2419,6 +2441,7 @@
                 overwrite: $('tagOverwrite').checked,
                 tag_characteristics: $('tagCharacteristics').checked,
                 only_untagged: $('tagOnlyUntagged').checked,
+                tag_brands: $('tagBrands').checked,
                 categories: this.getSelectedCategories(),
                 delay: 0
             };
@@ -2430,6 +2453,50 @@
                 $('tagProgressArea').classList.add('active');
                 addLog('taggerLog', 'Tagger iniciado...', 'info');
             } catch(e) { toast('Erro: ' + e.message, 'error'); }
+        },
+
+        _default: null, _saved: null, _promptLoaded: false,
+
+        async loadPrompt() {
+            try {
+                const r = await (await fetch(API + '/api/tagger/prompt')).json();
+                if (r.success) {
+                    $('tagPromptTa').value = r.prompt;
+                    this._default = r.default_prompt;
+                    this._saved = r.prompt;
+                    this._promptLoaded = true;
+                    this.checkPromptDirty();
+                }
+            } catch(e) { $('tagPromptTa').value = 'Erro: ' + e.message; }
+        },
+
+        async savePrompt() {
+            const p = $('tagPromptTa').value.trim();
+            if (!p) { toast('Prompt vazio', 'error'); return; }
+            try {
+                const r = await (await fetch(API + '/api/tagger/prompt', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({prompt: p})})).json();
+                if (r.success) { this._saved = p; this.checkPromptDirty(); toast('Prompt salvo no Firestore', 'success'); }
+                else toast('Erro: ' + r.error, 'error');
+            } catch(e) { toast('Erro: ' + e.message, 'error'); }
+        },
+
+        restorePrompt() {
+            if (this._default) { $('tagPromptTa').value = this._default; this.checkPromptDirty(); }
+        },
+
+        onPromptChange() { this.checkPromptDirty(); },
+
+        checkPromptDirty() {
+            const dot = $('tagPromptDot');
+            if (!dot) return;
+            dot.style.display = (this._promptLoaded && $('tagPromptTa').value.trim() !== this._saved) ? 'inline-block' : 'none';
+        },
+
+        togglePrompt() {
+            const bd = $('tagPromptBd'), hdr = $('tagPromptHdr');
+            const open = bd.style.display !== 'none' && bd.style.display !== '';
+            bd.style.display = open ? 'none' : 'block';
+            hdr.querySelector('.arr').style.transform = open ? '' : 'rotate(180deg)';
         }
     };
 
@@ -2847,6 +2914,7 @@
         Renamer.loadErrorLog();
         PromptAdmin.loadBasePrompt();
         Cat.loadPrompt();
+        Tagger.loadPrompt();
         // Skeleton some quando: Settings.load() (tema Firestore) + socket connect
         Settings.load();        // _skelDone() chamado no finally
         Establishments.load();  // carrega em paralelo, não bloqueia skeleton

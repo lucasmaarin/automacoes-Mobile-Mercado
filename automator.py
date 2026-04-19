@@ -74,7 +74,7 @@ Exemplos de transformacoes que voce deve fazer:
 
 Abreviacoes para expandir:
 - GF ou Gf = Garrafa
-- GR = g
+- GR = g (tambem gr minusculo, ex: 50gr > 50g, 260gr > 260g)
 - KG = Kg
 - PC = Pacote
 - VD = Vidro

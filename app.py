@@ -304,6 +304,8 @@ class ProductCategorizerAgent:
         "IpeCUT0kFZoMUuJugCdJ (Mais Itens): demais itens de uso direto em churrasco (tempero para carne, grelha, espeto, acendedor, etc.).\n"
         "\n"
         "-- Biscoitos --\n"
+        "IMPORTANTE: esta categoria e EXCLUSIVA para biscoitos e bolachas. Nenhum outro tipo de doce ou alimento deve ser colocado aqui.\n"
+        "NUNCA use Biscoitos para: pacoca, paçoca, pe de moleque (→ doces/Matinal ou Doces e Sobremesas); goiabada, marmelada (→ Th1xGEGLzRB3bFE8Smyo/Doce Pedaco ou doces/Matinal); bolinho, bolo, bolo embalado (→ nc0LHNtYTtwsfTfd6aDT/Bolos Mercearia); chocolate, bombom, trufa, achocolatado (→ S0G0hPEpo3S6kP4OjPUM/Chocolate Mercearia ou bomboniere/Matinal).\n"
         "C3FCL5ditlkuMQnRKg3e (Agua e Sal): biscoito agua e sal.\n"
         "nu3IlKHvf0QKSpdgcc1Y (Cream Cracker): biscoito cream cracker.\n"
         "N1Eg9yvjpRjdCfpHIijM (Biscoitos Salgados): biscoitos e bolachas salgadas em geral; salgadinhos, chips e snacks de milho, mandioca, batata, amendoim, pipoca industrializada e similares.\n"
@@ -312,14 +314,14 @@ class ProductCategorizerAgent:
         "DWlp9bzlMq2Dn5CcaWB1 (Rosquinhas): rosquinhas (acucar, coco, etc.).\n"
         "PKqYem2bZaP5dA85qyJW (Biscoito de Maizena): biscoito de maizena.\n"
         "t1mFcAUUCtXyLi3IqukF (Biscoito de Nata): biscoito de nata.\n"
-        "mIjFIdLZ0o1BK9W041B7 (Biscoito Doce): biscoitos doces genericos.\n"
+        "mIjFIdLZ0o1BK9W041B7 (Biscoito Doce): biscoitos doces genericos — APENAS biscoitos que sao doces (amanteigado doce, recheado doce, etc.); paçoca, goiabada, bolo e chocolate NAO sao biscoitos doces.\n"
         "AGQ23NBd67Sz4XmioIcP (Casadinho de Goiabada): casadinho e biscoito recheado de goiabada.\n"
         "0vqhZVGVFuOJw5L43V4d (Recheados): biscoitos recheados (exceto goiabada).\n"
         "6IBhORgOheeDZHWtNdmh (Wafer): wafer (chocolate, morango, baunilha).\n"
         "FZwgcpLd2YlICdXrUvfT (Biscoito de Polvilho): biscoito de polvilho.\n"
         "Hgjl65ywn4ozif05hm9R (Biscoito de Queijo): biscoito de queijo.\n"
         "ZHoNZzbqFwa8JeiPht5E (Torradas/Biscoitos): torradas empacotadas.\n"
-        "9MOiAXEqxjDAZBrpu38o (Mais Biscoitos): biscoitos nao classificados acima.\n"
+        "9MOiAXEqxjDAZBrpu38o (Mais Biscoitos): biscoitos nao classificados acima — SOMENTE biscoitos reais.\n"
         "1dZRgGcyYYSKN2jZ1fkr (Variados): mistura de biscoitos variados em caixa.\n"
         "\n"
         "-- Acougue --\n"
@@ -509,6 +511,7 @@ class ProductCategorizerAgent:
         "produtos_p_o_corpo (Produtos para o Corpo): sabonete (em barra, liquido ou espuma), hidratante corporal, creme para corpo, locao corporal — PRIORIDADE para sabonetes.\n"
         "CI7yNyLuVIvASZc576FC (Mais Itens/Higiene): residual de higiene pessoal.\n"
         "IMPORTANTE: sabonetes (barra, liquido, espuma) SEMPRE vao para produtos_p_o_corpo, nunca para sabonete.\n"
+        "NUNCA use Higiene/Perfumaria para alimentos. Leite condensado, creme de leite, doce de leite e derivados lacteos comestiveis pertencem a Doces e Sobremesas (categoria z2Iv1xs8ve9uhaV4xgOL), nunca a higiene pessoal.\n"
         "\n"
         "-- Graos (categoria u0Yzu9DRwcchumGYl8R4) --\n"
         "GT3sj93gQpsM05eaVuVO (Amendoim): amendoim cru, torrado e derivados.\n"
@@ -604,7 +607,7 @@ class ProductCategorizerAgent:
         "SjS3AHQTPQcVORfcAY7T (Coco/Derivados): coco ralado, leite de coco, creme de coco.\n"
         "FAyuLT11Zs0Ju7zTGPzw (Geleias): geleia de fruta.\n"
         "wDMG33utTlofsqiaKMJ8 (Doce Pastoso): doce de leite, doce de amendoim pastoso.\n"
-        "Th1xGEGLzRB3bFE8Smyo (Doce Pedaco): goiabada, marmelada em pedaco.\n"
+        "Th1xGEGLzRB3bFE8Smyo (Doce Pedaco): goiabada, marmelada em pedaco — NUNCA categorize goiabada em Biscoitos.\n"
         "3dPqFvOFxeEsVUtsS8kL (Cobertura): cobertura para sorvete, calda de chocolate.\n"
         "jU77g8Z9fBh4y7kDbazP (Gelatinas): gelatina em po ou pronta.\n"
         "ZXJuh32EpDxzFOqocUEy (Gourmet/Sobremesas): sobremesas gourmet.\n"
@@ -653,7 +656,7 @@ class ProductCategorizerAgent:
         "sardinhaAtumCia (Sardinha/Atum): sardinha e atum em lata.\n"
         "XDHnsRzAxPfvYl2IQFJB (Milho Verde): milho verde em lata.\n"
         "YEaQKmNqf2nAmhun8uWX (Batata Palha/Mercearia): batata palha.\n"
-        "S0G0hPEpo3S6kP4OjPUM (Chocolate/Mercearia): chocolate em barra, caixa de bombom.\n"
+        "S0G0hPEpo3S6kP4OjPUM (Chocolate/Mercearia): chocolate em barra, caixa de bombom, trufa, bombom avulso — NUNCA categorize chocolate em Biscoitos.\n"
         "TVdzP5PNpl1tOWgyuBhl (Chocolate em Barras): chocolate em barras.\n"
         "bombons (Bombons): bombons e trufas embaladas.\n"
         "amidoDeMilho (Amido de Milho): amido de milho (Maisena).\n"
@@ -669,7 +672,7 @@ class ProductCategorizerAgent:
         "wafer (Wafer/Mercearia): wafer de mercearia.\n"
         "EnzL0GvNbpCr8LKn2ylC (Biscoitos/Mercearia): biscoitos de mercearia.\n"
         "docesSobremesas (Doces e Sobremesas/Mercearia): doces e sobremesas de mercearia.\n"
-        "nc0LHNtYTtwsfTfd6aDT (Bolos/Mercearia): bolos embalados.\n"
+        "nc0LHNtYTtwsfTfd6aDT (Bolos/Mercearia): bolos embalados e bolinhos industrializados — NUNCA categorize bolos ou bolinhos em Biscoitos.\n"
         "zm7BaN8gCQPuDnaO4E83 (Paes/Mercearia): paes embalados de mercearia.\n"
         "produtosNaturais (Produtos Naturais/Mercearia): produtos naturais e organicos.\n"
         "KplUqL0TuNy1LBhnHLZt (Churrasco/Mercearia): itens de churrasco de mercearia.\n"
@@ -704,7 +707,7 @@ class ProductCategorizerAgent:
         "alimentacao_infantil (ALIMENTACAO INFANTIL): alimentacao infantil.\n"
         "bomboniere (BOMBONIERE): bomboniere, chocolates matinal.\n"
         "culinaria_doce (CULINARIA DOCE): ingredientes para culinaria doce.\n"
-        "doces (DOCES/Matinal): doces em geral da secao matinal.\n"
+        "doces (DOCES/Matinal): doces em geral da secao matinal — paçoca, pe de moleque e similares tambem vao aqui ou em Doces e Sobremesas.\n"
         "preparo_p_cafe_matinal (PREPARO CAFE MATINAL): preparos para cafe da manha.\n"
         "prepparos_para_cafe_da_manha (PREPAROS CAFE DA MANHA): preparos para cafe da manha (variante).\n"
         "\n"
@@ -3147,15 +3150,44 @@ def tagger_start():
         overwrite = bool(data.get('overwrite', False))
         tag_characteristics = bool(data.get('tag_characteristics', False))
         only_untagged = bool(data.get('only_untagged', False))
+        tag_brands = bool(data.get('tag_brands', False))
         categories = data.get('categories', [])
 
         def run_thread():
-            tagger.run_tagging(estabelecimento_id, categories, delay, dry_run, use_images, overwrite, tag_characteristics, only_untagged)
+            tagger.run_tagging(estabelecimento_id, categories, delay, dry_run, use_images, overwrite, tag_characteristics, only_untagged, tag_brands)
 
         t = Thread(target=run_thread)
         t.daemon = True
         t.start()
         return jsonify({'success': True, 'message': 'Tagger iniciado'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/tagger/prompt', methods=['GET'])
+def get_tagger_prompt():
+    global tagger
+    if not tagger:
+        return jsonify({'error': 'Tagger nao inicializado'}), 500
+    return jsonify({
+        'success': True,
+        'prompt': tagger._packaging_prompt,
+        'default_prompt': tagger._PACKAGING_PROMPT
+    })
+
+
+@app.route('/api/tagger/prompt', methods=['POST'])
+def save_tagger_prompt():
+    global tagger
+    if not tagger:
+        return jsonify({'error': 'Tagger nao inicializado'}), 500
+    try:
+        prompt = (request.json or {}).get('prompt', '').strip()
+        if not prompt:
+            return jsonify({'error': 'Prompt vazio'}), 400
+        if tagger.save_prompt_to_firestore(prompt):
+            return jsonify({'success': True, 'message': 'Prompt salvo no Firestore'})
+        return jsonify({'error': 'Erro ao salvar no Firestore'}), 500
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
