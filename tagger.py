@@ -53,26 +53,47 @@ def _normalize_quantity(token: str) -> str:
 
 def _tags_from_name(name: str) -> list:
     """Gera tags a partir do nome sem usar IA — divide por palavras, filtra stop words."""
-    words = name.split()
+    name_lower = name.lower()
+
     tags = []
     seen = set()
-    for word in words:
-        # Remove caracteres que não sejam letras, números, acentos ou %
+
+    def _add(tag):
+        if tag not in seen:
+            seen.add(tag)
+            tags.append(tag)
+
+    # Palavras individuais a suprimir por conta de frases compostas detectadas abaixo
+    suppress = set()
+
+    # "carne e leite" → #carne e leite (suprime #carne e #leite individualmente)
+    if re.search(r'\bcarne\s+e\s+leite\b', name_lower):
+        _add('#carne e leite')
+        suppress.update({'carne', 'leite'})
+
+    # "ao leite" → #ao leite (suprime #leite individualmente; "ao" já seria stop word)
+    if re.search(r'\bao\s+leite\b', name_lower):
+        _add('#ao leite')
+        suppress.add('leite')
+
+    # dúzia/dúzias de ovos → #cartela #cartela de ovos
+    if re.search(r'\bduz(ia|ias)\b', name_lower):
+        _add('#cartela')
+        _add('#cartela de ovos')
+
+    # Tokenização palavra a palavra
+    for word in name.split():
         clean = re.sub(r'[^\w%]', '', word, flags=re.UNICODE)
         if not clean:
             continue
         lower = clean.lower()
-        # Normaliza unidades (50gr → 50g)
         lower = _normalize_quantity(lower)
-        # Filtra stop words e tokens muito curtos (1 char) que não sejam numéricos
-        if lower in _STOP_WORDS:
+        if lower in _STOP_WORDS or lower in suppress:
             continue
         if len(lower) < 2 and not lower.isdigit():
             continue
-        tag = '#' + lower
-        if tag not in seen:
-            seen.add(tag)
-            tags.append(tag)
+        _add('#' + lower)
+
     return tags
 
 
