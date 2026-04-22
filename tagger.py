@@ -20,14 +20,6 @@ def _parse_rate_limit_wait(error: Exception, default: float = 5.0) -> float:
     return default
 
 
-# Palavras conectoras que não viram tags
-_STOP_WORDS = {
-    'e', 'de', 'da', 'do', 'das', 'dos', 'para', 'com', 'em',
-    'no', 'na', 'nos', 'nas', 'a', 'o', 'as', 'os', 'um', 'uma',
-    'ao', 'aos', 'à', 'às', 'por', 'pelo', 'pela', 'pelos', 'pelas',
-    'ou', 'que', 'se', 'seu', 'sua', 'seus', 'suas'
-}
-
 # Tipos válidos de embalagem que a IA pode retornar
 _PACKAGING_TYPES = {
     'garrafa', 'lata', 'caixinha', 'caixa', 'sache', 'sachê', 'pote',
@@ -46,55 +38,38 @@ _PACKAGING_NORMALIZE = {
 }
 
 
-def _normalize_quantity(token: str) -> str:
-    """Normaliza unidades de medida em tokens de quantidade. Ex: 50gr -> 50g."""
-    return re.sub(r'(\d+(?:[,\.]\d+)?)\s*gr\b', r'\1g', token, flags=re.IGNORECASE)
+def _quantity_tags_from_name(name: str) -> list:
+    """Extrai tags de quantidade/medida do nome. Ex: 50g, 1L, 500ml, 1kg."""
+    # Normaliza gr → g e lt → L
+    normalized = re.sub(r'(\d)\s*gr\b', r'\1g', name, flags=re.IGNORECASE)
+    normalized = re.sub(r'(\d)\s*lt\b', r'\1L', normalized, flags=re.IGNORECASE)
 
-
-def _tags_from_name(name: str) -> list:
-    """Gera tags a partir do nome sem usar IA — divide por palavras, filtra stop words."""
-    name_lower = name.lower()
-
+    pattern = r'\d+(?:[.,]\d+)?\s*(?:g|kg|ml|l|oz|un|unid)\b'
     tags = []
     seen = set()
-
-    def _add(tag):
+    for m in re.finditer(pattern, normalized, flags=re.IGNORECASE):
+        token = m.group(0).strip().replace(' ', '').replace(',', '.')
+        # Mantém L maiúsculo para litros
+        if token.lower().endswith('l') and not token.lower().endswith('ml'):
+            token = token[:-1] + 'L'
+        tag = '#' + token.lower() if not token.endswith('L') else '#' + token
         if tag not in seen:
             seen.add(tag)
             tags.append(tag)
-
-    # Palavras individuais a suprimir por conta de frases compostas detectadas abaixo
-    suppress = set()
-
-    # "carne e leite" → #carne e leite (suprime #carne e #leite individualmente)
-    if re.search(r'\bcarne\s+e\s+leite\b', name_lower):
-        _add('#carne e leite')
-        suppress.update({'carne', 'leite'})
-
-    # "ao leite" → #ao leite (suprime #leite individualmente; "ao" já seria stop word)
-    if re.search(r'\bao\s+leite\b', name_lower):
-        _add('#ao leite')
-        suppress.add('leite')
-
-    # dúzia/dúzias de ovos → #cartela #cartela de ovos
-    if re.search(r'\bduz(ia|ias)\b', name_lower):
-        _add('#cartela')
-        _add('#cartela de ovos')
-
-    # Tokenização palavra a palavra
-    for word in name.split():
-        clean = re.sub(r'[^\w%]', '', word, flags=re.UNICODE)
-        if not clean:
-            continue
-        lower = clean.lower()
-        lower = _normalize_quantity(lower)
-        if lower in _STOP_WORDS or lower in suppress:
-            continue
-        if len(lower) < 2 and not lower.isdigit():
-            continue
-        _add('#' + lower)
-
     return tags
+
+
+def _filter_packaging_tags(tags: list, product_name: str) -> list:
+    """Remove #caixa e #caixinha de produtos que não são leite."""
+    name_lower = product_name.lower().strip()
+    leite_allowed = (
+        name_lower.startswith('leite') or
+        'creme de leite' in name_lower or
+        'leite condensado' in name_lower
+    )
+    if leite_allowed:
+        return tags
+    return [t for t in tags if t not in ('#caixa', '#caixinha')]
 
 
 class ProductTagger:
@@ -624,11 +599,11 @@ class ProductTagger:
             elif tag_characteristics and use_images:
                 mode = "IA — características + detecção pet por imagem"
             elif tag_characteristics:
-                mode = "IA — características do produto"
+                mode = "medidas do nome (g, ml, kg, L)"
             elif use_images:
                 mode = "IA — embalagem por imagem"
             else:
-                mode = "palavras do nome"
+                mode = "embalagem por imagem (padrão)"
             self.log_message(
                 f"{len(to_process)} produtos para processar — {mode}, "
                 f"{self.MAX_WORKERS} workers paralelos",
@@ -650,17 +625,12 @@ class ProductTagger:
                 def _char_chunk(chunk, est_id, dr):
                     return self._process_characteristics_chunk(chunk, est_id, dr, overwrite)
                 self._run_parallel(to_process, estabelecimento_id, dry_run,
-                                   20, _char_chunk)
+                                   500, _char_chunk)
             elif use_images:
                 def _image_chunk(chunk, est_id, dr):
                     return self._process_image_chunk(chunk, est_id, dr, overwrite)
                 self._run_parallel(to_process, estabelecimento_id, dry_run,
                                    self.IMAGE_BATCH_SIZE, _image_chunk)
-            else:
-                def _name_chunk(chunk, est_id, dr):
-                    return self._process_name_chunk(chunk, est_id, dr, overwrite)
-                self._run_parallel(to_process, estabelecimento_id, dry_run,
-                                   500, _name_chunk)
 
         except Exception as e:
             self.log_message(f"Erro fatal: {e}", "error")
@@ -707,77 +677,25 @@ class ProductTagger:
                 except Exception as e:
                     self.log_message(f"Erro em chunk: {e}", "error")
 
-    def _process_name_chunk(self, chunk, estabelecimento_id, dry_run, overwrite=False):
-        """Tags geradas diretamente das palavras do nome — sem IA.
-        overwrite=False → mescla com tags existentes (acrescenta sem remover).
-        overwrite=True  → substitui, mas pula se as novas tags já existem todas no produto."""
+    def _process_characteristics_chunk(self, chunk, estabelecimento_id, dry_run, overwrite=False):
+        """Tags de quantidade extraídas do nome (g, ml, kg, L). Sem IA."""
         if not tagger_state['running']:
             return
         updates = []
         updated = skipped = errors = 0
         for product in chunk:
-            name = product['name']
-            new_tags = _tags_from_name(name)
-            if not new_tags:
-                self.log_message(f"{name} → sem tags geradas", "warning")
+            qty_tags = _quantity_tags_from_name(product['name'])
+            if not qty_tags:
+                self.log_message(f"{product['name']} → nenhuma medida encontrada", "info")
                 skipped += 1
                 continue
             existing = list(product.get('existing_tags') or [])
             if overwrite:
-                # Pula se todas as novas tags já existem no produto
-                if all(t in existing for t in new_tags):
-                    self.log_message(f"{name} → tags já existem, pulando", "info")
-                    skipped += 1
-                    continue
-                final_tags = new_tags
+                final_tags = qty_tags
             else:
-                # Mescla: acrescenta apenas tags que ainda não existem
-                to_add = [t for t in new_tags if t not in existing]
+                to_add = [t for t in qty_tags if t not in existing]
                 if not to_add:
-                    self.log_message(f"{name} → nenhuma tag nova para acrescentar, pulando", "info")
-                    skipped += 1
-                    continue
-                final_tags = existing + to_add
-            self.log_message(f"{name} → {' '.join(final_tags)}", "info")
-            updates.append((product['id'], final_tags))
-            updated += 1
-        try:
-            self._save_tags_batch(estabelecimento_id, updates, dry_run)
-        except Exception as e:
-            self.log_message(f"Erro ao salvar: {e}", "error")
-            errors += updated
-            updated = 0
-        self._update_progress(updated=updated, skipped=skipped, errors=errors)
-
-    def _process_characteristics_chunk(self, chunk, estabelecimento_id, dry_run, overwrite=False):
-        """Tags de características via IA (sem imagem). Mescla ou substitui conforme overwrite."""
-        if not tagger_state['running']:
-            return
-        try:
-            char_map = self.get_characteristics_batch(chunk)
-        except Exception as e:
-            self.log_message(f"Erro ao identificar características: {e}", "error")
-            char_map = {}
-
-        updates = []
-        updated = skipped = errors = 0
-        for j, product in enumerate(chunk):
-            char_tags = [self._format_char_tag(t) for t in (char_map.get(j) or [])]
-            if not char_tags:
-                self.log_message(f"{product['name']} → nenhuma característica identificada", "info")
-                skipped += 1
-                continue
-            existing = list(product.get('existing_tags') or [])
-            if overwrite:
-                if all(t in existing for t in char_tags):
                     self.log_message(f"{product['name']} → tags já existem, pulando", "info")
-                    skipped += 1
-                    continue
-                final_tags = char_tags
-            else:
-                to_add = [t for t in char_tags if t not in existing]
-                if not to_add:
-                    self.log_message(f"{product['name']} → nenhuma tag nova para acrescentar, pulando", "info")
                     skipped += 1
                     continue
                 final_tags = existing + to_add
@@ -883,9 +801,9 @@ class ProductTagger:
         lower = raw.lower().strip()
         return _PACKAGING_NORMALIZE.get(lower, lower).replace(' ', '')
 
-    def _process_image_chunk(self, chunk, estabelecimento_id, dry_run, overwrite=True):
+    def _process_image_chunk(self, chunk, estabelecimento_id, dry_run, overwrite=False):
         """Tags completas via IA (nome + imagem).
-        overwrite=True → substitui tags existentes.
+        overwrite=True → limpa tags existentes e substitui pelas novas.
         overwrite=False → mescla com tags existentes sem duplicar."""
         if not tagger_state['running']:
             return
@@ -899,17 +817,13 @@ class ProductTagger:
         updated = skipped = errors = 0
         for j, product in enumerate(chunk):
             name = product['name']
-            new_tags = tags_map.get(j)
+            new_tags = _filter_packaging_tags(tags_map.get(j) or [], name)
             if not new_tags:
                 self.log_message(f"{name} → nenhuma tag gerada", "warning")
                 skipped += 1
                 continue
             existing = list(product.get('existing_tags') or [])
             if overwrite:
-                if all(t in existing for t in new_tags):
-                    self.log_message(f"{name} → tags já existem, pulando", "info")
-                    skipped += 1
-                    continue
                 final_tags = new_tags
             else:
                 to_add = [t for t in new_tags if t not in existing]
