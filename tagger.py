@@ -177,28 +177,31 @@ class ProductTagger:
     )
 
     _PACKAGING_PROMPT = (
-        "Voce e um agente especializado em catalogar produtos de supermercado atraves de tags de busca.\n"
-        "Voce recebera o nome comercial e a foto de cada produto.\n"
-        "Regra absoluta: so aplique uma tag se houver evidencia explicita no nome ou na foto. Nunca suponha, nunca infira alem do visivel.\n\n"
-        "Gere tags nas seguintes categorias, nesta ordem:\n"
-        "1. Categoria generica — o tipo de produto em sua forma mais simples. Ex: #agua, #biscoito, #molho.\n"
-        "2. Marca — extraia do nome comercial. Se nao estiver no nome, extraia da foto. Minusculas, sem acento, sem espaco. Ex: #nissin, #barilla. Se nao identificar, omita.\n"
-        "3. Especificadores — sabor, variante, caracteristica declarada no nome ou visivel na foto. Ex: #sem gas, #calabresa, #picante. Minusculas, sem acento, palavras compostas separadas por espaco.\n"
-        "4. Embalagem — identifique pelo formato e material visiveis na foto. Use o nome como apoio secundario. Se nao for possivel identificar com certeza, omita.\n"
-        "   Tipos validos: #garrafa (plastico ou vidro), #lata, #pote, #saco, #saquinho, #frasco, #bisnaga, #bandeja, #vidro, #copo, #sache, #envelope.\n"
-        "   #garrafa: use para qualquer produto em garrafa (agua, refrigerante, oleo, molho, etc.) — e uma das tags mais importantes de embalagem.\n"
-        "   EXCECOES — NAO defina tag de embalagem para: ovos de pascoa, biscoitos, bolachas, cookies (mesmo em caixas com varias unidades).\n"
-        "   #caixa e #caixinha: use APENAS para leite longa vida e leite em caixinha.\n"
-        "   [OUTROS PRODUTOS COM CAIXA/CAIXINHA — adicione aqui futuramente]\n"
-        "5. Quantidade — exatamente como aparece no nome: #85g, #1-5l, #800g. Se nao aparecer no nome, omita.\n"
-        "6. Apelidos populares — somente termos consagrados: #lamen para macarray instantaneo, #salgadinho para snacks. Se nao houver apelido obvio, omita.\n"
-        "7. Contexto de uso — somente se evidente: #infantil se o rotulo indicar faixa etaria, #preparo culinario para extratos e molhos. Se houver duvida, omita.\n\n"
-        "Se a foto estiver em baixa resolucao, cortada ou ilegivel a ponto de impedir identificacao de embalagem ou marca, "
-        "gere as tags possiveis pelo nome e adicione #revisar ao final.\n\n"
-        "Formato de saida: JSON onde a chave e o numero do produto (string) e o valor e uma string com as tags separadas por espaco.\n"
-        "Todas as tags em minusculas, sem acento, palavras compostas separadas por espaco, iniciando com #.\n"
+        "Voce recebera o nome e a foto de cada produto de supermercado.\n"
+        "Sua UNICA tarefa: identificar o TIPO DE EMBALAGEM do produto pela foto.\n"
+        "Nao gere nenhuma outra tag — apenas a embalagem.\n\n"
+        "Tipos validos de embalagem:\n"
+        "#garrafa — qualquer garrafa (plastico ou vidro): agua, refrigerante, oleo, molho, etc.\n"
+        "#lata — lata de metal\n"
+        "#pote — pote de plastico ou vidro\n"
+        "#saco — saco plastico grande\n"
+        "#saquinho — saquinho pequeno\n"
+        "#frasco — frasco (higiene, medicamento, condimento)\n"
+        "#bisnaga — bisnaga (maionese, creme dental, etc.)\n"
+        "#bandeja — bandeja (carnes, frios, hortifruti)\n"
+        "#vidro — vidro (conservas, geleia, molho)\n"
+        "#copo — copo plastico ou de vidro\n"
+        "#sache — sache individual\n"
+        "#envelope — envelope (tempero, refresco em po)\n"
+        "#caixinha — APENAS leite longa vida e leite em caixinha\n"
+        "#caixa — APENAS leite longa vida\n\n"
+        "EXCECOES — NAO defina tag de embalagem para: ovos de pascoa, biscoitos, bolachas, cookies.\n"
+        "[OUTROS PRODUTOS COM CAIXA/CAIXINHA — adicione aqui futuramente]\n\n"
+        "Se nao for possivel identificar a embalagem com certeza pela foto, retorne null.\n"
+        "Se a foto estiver ilegivel, retorne null.\n\n"
+        "Formato: JSON onde a chave e o numero do produto e o valor e a tag de embalagem (string) ou null.\n"
         "Nenhum texto adicional. Nenhuma explicacao.\n"
-        'Exemplo: {"1": "#agua #crystal #sem gas #garrafa #500ml", "2": "#biscoito #oreo #recheado #pacote #144g", "3": null}'
+        'Exemplo: {"1": "#garrafa", "2": "#lata", "3": null, "4": "#pote"}'
     )
 
     def __init__(self, db_client):
@@ -316,7 +319,7 @@ class ProductTagger:
     # ------------------------------------------------------------------
 
     def get_packaging_batch(self, products: list, max_retries: int = 8) -> dict:
-        """Retorna {index: ['#tag1', '#tag2', ...]} com todas as tags geradas pelo novo prompt."""
+        """Retorna {index: '#tag'} com a tag de embalagem identificada pela foto."""
         user_content = [{"type": "text", "text": self._packaging_prompt + "\n\nProdutos:\n"}]
 
         for i, p in enumerate(products):
@@ -334,7 +337,7 @@ class ProductTagger:
                 resp = _ext.openai_client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[{"role": "user", "content": user_content}],
-                    max_tokens=80 * len(products),
+                    max_tokens=15 * len(products),
                     temperature=0
                 )
                 self._record_usage(resp.usage)
@@ -345,10 +348,8 @@ class ProductTagger:
                         idx = int(k) - 1
                     except (ValueError, TypeError):
                         continue
-                    if v and isinstance(v, str):
-                        tags = [t.strip().replace('-', ' ') for t in v.split() if t.strip().startswith('#')]
-                        if tags:
-                            result[idx] = tags
+                    if v and isinstance(v, str) and v.strip().startswith('#'):
+                        result[idx] = [v.strip().lower()]
                 return result
             except _openai_module.RateLimitError as e:
                 if _ext._is_quota_error(e):
@@ -503,7 +504,8 @@ class ProductTagger:
     # Firestore helpers
     # ------------------------------------------------------------------
 
-    def _get_products(self, estabelecimento_id: str, categories: list, use_images: bool) -> list:
+    def _get_products(self, estabelecimento_id: str, categories: list, use_images: bool,
+                      filter_subcategory_id: str = None) -> list:
         ref = (
             self.db.collection('estabelecimentos')
             .document(estabelecimento_id)
@@ -519,6 +521,10 @@ class ProductTagger:
             if categories:
                 cats = data.get('categoriesIds') or []
                 if not any(c in categories for c in cats):
+                    continue
+            if filter_subcategory_id:
+                subs = data.get('subcategoriesIds') or []
+                if filter_subcategory_id not in subs:
                     continue
             image_url = None
             if use_images:
@@ -553,7 +559,7 @@ class ProductTagger:
                     delay: float = 0, dry_run: bool = False,
                     use_images: bool = False, overwrite: bool = False,
                     tag_characteristics: bool = False, only_untagged: bool = False,
-                    tag_brands: bool = False):
+                    tag_brands: bool = False, filter_subcategory_id: str = None):
         tagger_state['running'] = True
         tagger_state['current_product'] = None
         tagger_state['progress'] = {
@@ -576,7 +582,7 @@ class ProductTagger:
 
         try:
             self.log_message(f"Buscando produtos de '{estabelecimento_id}'...", "info")
-            products = self._get_products(estabelecimento_id, categories, _need_images)
+            products = self._get_products(estabelecimento_id, categories, _need_images, filter_subcategory_id)
 
             total = len(products)
             tagger_state['progress']['total'] = total

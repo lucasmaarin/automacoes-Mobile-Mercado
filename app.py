@@ -1832,7 +1832,7 @@ class ProductCategorizerAgent:
                            only_uncategorized=False, filter_category_id=None,
                            include_mercearia=False, filter_subcategory_id=None,
                            use_images=False, fallback_category_id=None, fallback_subcategory_id=None,
-                           review_categorized=False):
+                           review_categorized=False, max_categories=2):
         try:
             self.tokens_used = 0
             self.estimated_cost = 0
@@ -1962,6 +1962,8 @@ class ProductCategorizerAgent:
 
                     # Dúvidas tratadas como "não encontrado" → vai para fallback
                     pairs = self._filter_duvidas(pairs) if pairs else []
+                    if pairs and max_categories:
+                        pairs = pairs[:max_categories]
 
                     # Retry individual quando o batch falhou para este produto
                     if not pairs:
@@ -2611,13 +2613,14 @@ def start_automation():
         filter_subcategory_id = data.get('filter_subcategory_id', '').strip() or None
         use_images = bool(data.get('use_images', False))
         only_raw_names = bool(data.get('only_raw_names', False))
+        only_standardized = bool(data.get('only_standardized', False))
 
         if not categories:
             return jsonify({'error': 'Selecione ao menos uma categoria'}), 400
 
 
         def run_thread():
-            automator.run_automation(estabelecimento_id, categories, delay, dry_run, custom_prompt, filter_subcategory_id, use_images, only_raw_names)
+            automator.run_automation(estabelecimento_id, categories, delay, dry_run, custom_prompt, filter_subcategory_id, use_images, only_raw_names, only_standardized)
 
         thread = Thread(target=run_thread)
         thread.daemon = True
@@ -2908,6 +2911,9 @@ def start_categorization():
     fallback_category_id = data.get('fallback_category_id', '').strip() or None
     fallback_subcategory_id = data.get('fallback_subcategory_id', '').strip() or None
     review_categorized = bool(data.get('review_categorized', False))
+    max_categories = int(data.get('max_categories', 2))
+    if max_categories not in (1, 2):
+        max_categories = 2
 
     # Sobrescreve o prompt apenas para esta execucao (restaura ao final)
     original_prompt = categorizer.cat_system_prompt
@@ -2926,6 +2932,7 @@ def start_categorization():
                 fallback_category_id=fallback_category_id,
                 fallback_subcategory_id=fallback_subcategory_id,
                 review_categorized=review_categorized,
+                max_categories=max_categories,
             )
         finally:
             if custom_prompt:
@@ -3152,9 +3159,10 @@ def tagger_start():
         only_untagged = bool(data.get('only_untagged', False))
         tag_brands = bool(data.get('tag_brands', False))
         categories = data.get('categories', [])
+        filter_subcategory_id = data.get('filter_subcategory_id', '').strip() or None
 
         def run_thread():
-            tagger.run_tagging(estabelecimento_id, categories, delay, dry_run, use_images, overwrite, tag_characteristics, only_untagged, tag_brands)
+            tagger.run_tagging(estabelecimento_id, categories, delay, dry_run, use_images, overwrite, tag_characteristics, only_untagged, tag_brands, filter_subcategory_id)
 
         t = Thread(target=run_thread)
         t.daemon = True
