@@ -17,33 +17,34 @@ class ProductCategorizerAgent:
         self.input_token_cost  = 0.00015 / 1000
         self.output_token_cost = 0.00060 / 1000
         self._lock = threading.Lock()
-        saved = self.load_cat_prompt_from_firestore()
-        self.cat_system_prompt = saved if saved else self.DEFAULT_CAT_SYSTEM_PROMPT
+        self.cat_user_additions = self._load_user_additions()
+        self.cat_system_prompt = self._build_system_prompt()
 
-    def load_cat_prompt_from_firestore(self) -> str:
+    def _build_system_prompt(self) -> str:
+        if self.cat_user_additions:
+            return self.DEFAULT_CAT_SYSTEM_PROMPT + '\n\nInstruções adicionais:\n' + self.cat_user_additions
+        return self.DEFAULT_CAT_SYSTEM_PROMPT
+
+    def _load_user_additions(self) -> str:
         try:
             doc = self.db.collection('Automacoes').document('defenir_catsub').get()
             if doc.exists:
-                prompt = (doc.to_dict() or {}).get('prompt', '')
-                if prompt:
-                    logger.info("Prompt do categorizador carregado do Firestore (Automacoes/defenir_catsub)")
-                    return prompt
+                additions = (doc.to_dict() or {}).get('user_additions', '')
+                if additions:
+                    return additions
         except Exception as e:
-            logger.warning(f"Nao foi possivel carregar prompt do categorizador: {e}")
-        return None
+            logger.warning(f"Nao foi possivel carregar instrucoes adicionais do categorizador: {e}")
+        return ''
 
-    def save_cat_prompt_to_firestore(self, prompt: str) -> bool:
+    def save_user_additions_to_firestore(self, additions: str) -> bool:
         try:
             self.db.collection('Automacoes').document('defenir_catsub').set({
-                'prompt': prompt,
-                'descricao': 'Instrucoes de sistema usadas pela IA para definir categoria e subcategoria dos produtos',
+                'user_additions': additions,
                 'updated_at': datetime.now().isoformat(),
             }, merge=True)
-            self.cat_system_prompt = prompt
-            logger.info("Prompt do categorizador salvo no Firestore (Automacoes/defenir_catsub)")
+            self.cat_user_additions = additions
+            self.cat_system_prompt = self._build_system_prompt()
             return True
         except Exception as e:
-            logger.error(f"Erro ao salvar prompt do categorizador: {e}")
+            logger.error(f"Erro ao salvar instrucoes adicionais do categorizador: {e}")
             return False
-
-    # Métodos auxiliares e de execução do categorizador foram mantidos no original.

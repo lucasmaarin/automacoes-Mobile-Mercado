@@ -51,8 +51,8 @@ except Exception:
 from config import logger, SECRET_KEY
 from extensions import init_extensions, init_firebase, get_db, _reload_openai_client, _is_quota_error, emit_quota_exceeded
 from utils import (to_json_safe, firestore_default, safe_sample, get_today_stats, record_daily_usage,
-                   automation_state, explorer_state, categorizer_state, categorizer_targeted_state,
-                   tagger_state, undo_store, _undo_lock)
+                   get_all_stats, automation_state, explorer_state, categorizer_state,
+                   categorizer_targeted_state, tagger_state, undo_store, _undo_lock)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY
@@ -164,59 +164,6 @@ def safe_sample(value):
     except Exception:
         s = str(value)
         return s[:100] + ("..." if len(s) > 100 else "")
-
-
-# ============================================================
-# Contagem diária de uso de tokens/custo
-# ============================================================
-DAILY_STATS_FILE = 'daily_stats.json'
-_daily_stats_data: dict = {}
-
-
-def _load_daily_stats():
-    global _daily_stats_data
-    try:
-        if os.path.exists(DAILY_STATS_FILE):
-            with open(DAILY_STATS_FILE, 'r') as f:
-                _daily_stats_data = json.load(f)
-    except Exception:
-        _daily_stats_data = {}
-
-
-def _save_daily_stats():
-    try:
-        with open(DAILY_STATS_FILE, 'w') as f:
-            json.dump(_daily_stats_data, f)
-    except Exception:
-        pass
-
-
-def get_today_stats() -> dict:
-    today = datetime.now().strftime('%Y-%m-%d')
-    d = _daily_stats_data.get(today, {})
-    return {
-        'date': today,
-        'tokens': d.get('tokens', 0),
-        'cost': d.get('cost', 0.0),
-        'calls': d.get('calls', 0),
-    }
-
-
-def record_daily_usage(tokens: int, cost: float):
-    today = datetime.now().strftime('%Y-%m-%d')
-    if today not in _daily_stats_data:
-        _daily_stats_data[today] = {'tokens': 0, 'cost': 0.0, 'calls': 0}
-    _daily_stats_data[today]['tokens'] += tokens
-    _daily_stats_data[today]['cost'] += cost
-    _daily_stats_data[today]['calls'] += 1
-    _save_daily_stats()
-    try:
-        socketio.emit('daily_stats_update', get_today_stats())
-    except Exception:
-        pass
-
-
-_load_daily_stats()
 
 
 # ============================================================
@@ -815,33 +762,38 @@ class ProductCategorizerAgent:
         self.input_token_cost  = 0.00015 / 1000   # gpt-4o-mini: $0.15/1M input
         self.output_token_cost = 0.00060 / 1000   # gpt-4o-mini: $0.60/1M output
         self._lock = threading.Lock()
-        saved = self.load_cat_prompt_from_firestore()
-        self.cat_system_prompt = saved if saved else self.DEFAULT_CAT_SYSTEM_PROMPT
+        self.cat_user_additions = self._load_user_additions()
+        self.cat_system_prompt = self._build_system_prompt()
 
-    def load_cat_prompt_from_firestore(self) -> str:
+    def _build_system_prompt(self) -> str:
+        if self.cat_user_additions:
+            return self.DEFAULT_CAT_SYSTEM_PROMPT + '\n\nInstruções adicionais:\n' + self.cat_user_additions
+        return self.DEFAULT_CAT_SYSTEM_PROMPT
+
+    def _load_user_additions(self) -> str:
         try:
             doc = self.db.collection('Automacoes').document('defenir_catsub').get()
             if doc.exists:
-                prompt = (doc.to_dict() or {}).get('prompt', '')
-                if prompt:
-                    logger.info("Prompt do categorizador carregado do Firestore (Automacoes/defenir_catsub)")
-                    return prompt
+                additions = (doc.to_dict() or {}).get('user_additions', '')
+                if additions:
+                    logger.info("Instrucoes adicionais do categorizador carregadas do Firestore")
+                    return additions
         except Exception as e:
-            logger.warning(f"Nao foi possivel carregar prompt do categorizador: {e}")
-        return None
+            logger.warning(f"Nao foi possivel carregar instrucoes adicionais do categorizador: {e}")
+        return ''
 
-    def save_cat_prompt_to_firestore(self, prompt: str) -> bool:
+    def save_user_additions_to_firestore(self, additions: str) -> bool:
         try:
             self.db.collection('Automacoes').document('defenir_catsub').set({
-                'prompt': prompt,
-                'descricao': 'Instrucoes de sistema usadas pela IA para definir categoria e subcategoria dos produtos',
+                'user_additions': additions,
                 'updated_at': datetime.now().isoformat(),
             }, merge=True)
-            self.cat_system_prompt = prompt
-            logger.info("Prompt do categorizador salvo no Firestore (Automacoes/defenir_catsub)")
+            self.cat_user_additions = additions
+            self.cat_system_prompt = self._build_system_prompt()
+            logger.info("Instrucoes adicionais do categorizador salvas no Firestore")
             return True
         except Exception as e:
-            logger.error(f"Erro ao salvar prompt do categorizador: {e}")
+            logger.error(f"Erro ao salvar instrucoes adicionais do categorizador: {e}")
             return False
 
     def log_message(self, message, level="info"):
@@ -2615,10 +2567,6 @@ def start_automation():
         only_raw_names = bool(data.get('only_raw_names', False))
         only_standardized = bool(data.get('only_standardized', False))
 
-        if not categories:
-            return jsonify({'error': 'Selecione ao menos uma categoria'}), 400
-
-
         def run_thread():
             automator.run_automation(estabelecimento_id, categories, delay, dry_run, custom_prompt, filter_subcategory_id, use_images, only_raw_names, only_standardized)
 
@@ -2848,11 +2796,7 @@ def get_cat_prompt():
     global categorizer
     if not categorizer:
         return jsonify({'error': 'Categorizador nao inicializado'}), 500
-    return jsonify({
-        'success': True,
-        'prompt': categorizer.cat_system_prompt,
-        'default_prompt': ProductCategorizerAgent.DEFAULT_CAT_SYSTEM_PROMPT
-    })
+    return jsonify({'success': True, 'user_additions': categorizer.cat_user_additions})
 
 
 @app.route('/api/categorizer/prompt', methods=['POST'])
@@ -2861,30 +2805,10 @@ def save_cat_prompt():
     if not categorizer:
         return jsonify({'error': 'Categorizador nao inicializado'}), 500
     try:
-        data = request.json or {}
-        prompt = data.get('prompt', '').strip()
-        if not prompt:
-            return jsonify({'error': 'Prompt vazio'}), 400
-        if categorizer.save_cat_prompt_to_firestore(prompt):
-            return jsonify({'success': True, 'message': 'Prompt salvo no Firestore'})
-        else:
-            return jsonify({'error': 'Erro ao salvar no Firestore'}), 500
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/categorizer/prompt/reset', methods=['POST'])
-def reset_cat_prompt():
-    """Restaura o prompt do Firestore para o DEFAULT_CAT_SYSTEM_PROMPT do codigo."""
-    global categorizer
-    if not categorizer:
-        return jsonify({'error': 'Categorizador nao inicializado'}), 500
-    try:
-        default = ProductCategorizerAgent.DEFAULT_CAT_SYSTEM_PROMPT
-        if categorizer.save_cat_prompt_to_firestore(default):
-            return jsonify({'success': True, 'message': 'Prompt restaurado para o padrao do codigo'})
-        else:
-            return jsonify({'error': 'Erro ao salvar no Firestore'}), 500
+        additions = (request.json or {}).get('user_additions', '')
+        if categorizer.save_user_additions_to_firestore(additions):
+            return jsonify({'success': True})
+        return jsonify({'error': 'Erro ao salvar no Firestore'}), 500
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -2896,32 +2820,26 @@ def start_categorization():
         return jsonify({'error': 'Categorizador nao inicializado'}), 500
     if categorizer_state['running']:
         return jsonify({'error': 'Categorizacao ja em execucao'}), 400
-    data = request.json or {}
-    estabelecimento_id = data.get('estabelecimento_id', '').strip()
-    if not estabelecimento_id:
-        return jsonify({'error': 'estabelecimento_id e obrigatorio'}), 400
-    delay = float(data.get('delay', 0.5))
-    dry_run = bool(data.get('dry_run', False))
-    only_uncategorized = bool(data.get('only_uncategorized', False))
-    filter_category_id = data.get('filter_category_id', '').strip() or None
-    filter_subcategory_id = data.get('filter_subcategory_id', '').strip() or None
-    include_mercearia = bool(data.get('include_mercearia', False))
-    use_images = bool(data.get('use_images', False))
-    custom_prompt = data.get('custom_prompt', '').strip() or None
-    fallback_category_id = data.get('fallback_category_id', '').strip() or None
-    fallback_subcategory_id = data.get('fallback_subcategory_id', '').strip() or None
-    review_categorized = bool(data.get('review_categorized', False))
-    max_categories = int(data.get('max_categories', 2))
-    if max_categories not in (1, 2):
-        max_categories = 2
+    try:
+        data = request.json or {}
+        estabelecimento_id = (data.get('estabelecimento_id') or '').strip()
+        if not estabelecimento_id:
+            return jsonify({'error': 'estabelecimento_id e obrigatorio'}), 400
+        delay = float(data.get('delay') or 0.5)
+        dry_run = bool(data.get('dry_run', False))
+        only_uncategorized = bool(data.get('only_uncategorized', False))
+        filter_category_id = (data.get('filter_category_id') or '').strip() or None
+        filter_subcategory_id = (data.get('filter_subcategory_id') or '').strip() or None
+        include_mercearia = bool(data.get('include_mercearia', False))
+        use_images = bool(data.get('use_images', False))
+        fallback_category_id = (data.get('fallback_category_id') or '').strip() or None
+        fallback_subcategory_id = (data.get('fallback_subcategory_id') or '').strip() or None
+        review_categorized = bool(data.get('review_categorized', False))
+        max_categories = int(data.get('max_categories') or 2)
+        if max_categories not in (1, 2):
+            max_categories = 2
 
-    # Sobrescreve o prompt apenas para esta execucao (restaura ao final)
-    original_prompt = categorizer.cat_system_prompt
-    if custom_prompt:
-        categorizer.cat_system_prompt = custom_prompt
-
-    def run():
-        try:
+        def run():
             categorizer.run_categorization(
                 estabelecimento_id, delay, dry_run,
                 only_uncategorized=only_uncategorized,
@@ -2934,12 +2852,11 @@ def start_categorization():
                 review_categorized=review_categorized,
                 max_categories=max_categories,
             )
-        finally:
-            if custom_prompt:
-                categorizer.cat_system_prompt = original_prompt
 
-    Thread(target=run, daemon=True).start()
-    return jsonify({'success': True, 'message': 'Categorizacao iniciada'})
+        Thread(target=run, daemon=True).start()
+        return jsonify({'success': True, 'message': 'Categorizacao iniciada'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/categorizer/stop', methods=['POST'])
@@ -3148,18 +3065,18 @@ def tagger_start():
         return jsonify({'error': 'Tagger ja esta em execucao'}), 400
     try:
         data = request.json or {}
-        estabelecimento_id = data.get('estabelecimento_id', '').strip()
+        estabelecimento_id = (data.get('estabelecimento_id') or '').strip()
         if not estabelecimento_id:
             return jsonify({'error': 'estabelecimento_id obrigatorio'}), 400
-        delay = float(data.get('delay', 0))
+        delay = float(data.get('delay') or 0)
         dry_run = bool(data.get('dry_run', False))
         use_images = bool(data.get('use_images', False))
         overwrite = bool(data.get('overwrite', False))
         tag_characteristics = bool(data.get('tag_characteristics', False))
         only_untagged = bool(data.get('only_untagged', False))
         tag_brands = bool(data.get('tag_brands', False))
-        categories = data.get('categories', [])
-        filter_subcategory_id = data.get('filter_subcategory_id', '').strip() or None
+        categories = data.get('categories') or []
+        filter_subcategory_id = (data.get('filter_subcategory_id') or '').strip() or None
 
         def run_thread():
             tagger.run_tagging(estabelecimento_id, categories, delay, dry_run, use_images, overwrite, tag_characteristics, only_untagged, tag_brands, filter_subcategory_id)
@@ -3177,11 +3094,7 @@ def get_tagger_prompt():
     global tagger
     if not tagger:
         return jsonify({'error': 'Tagger nao inicializado'}), 500
-    return jsonify({
-        'success': True,
-        'prompt': tagger._packaging_prompt,
-        'default_prompt': tagger._PACKAGING_PROMPT
-    })
+    return jsonify({'success': True, 'user_additions': tagger._user_additions})
 
 
 @app.route('/api/tagger/prompt', methods=['POST'])
@@ -3190,11 +3103,9 @@ def save_tagger_prompt():
     if not tagger:
         return jsonify({'error': 'Tagger nao inicializado'}), 500
     try:
-        prompt = (request.json or {}).get('prompt', '').strip()
-        if not prompt:
-            return jsonify({'error': 'Prompt vazio'}), 400
-        if tagger.save_prompt_to_firestore(prompt):
-            return jsonify({'success': True, 'message': 'Prompt salvo no Firestore'})
+        additions = (request.json or {}).get('user_additions', '')
+        if tagger.save_user_additions_to_firestore(additions):
+            return jsonify({'success': True})
         return jsonify({'error': 'Erro ao salvar no Firestore'}), 500
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -3235,7 +3146,7 @@ def tagger_logs():
 # ============================================================
 @app.route('/api/stats/daily', methods=['GET'])
 def daily_stats_api():
-    return jsonify({'success': True, 'today': get_today_stats(), 'all': _daily_stats_data})
+    return jsonify({'success': True, 'today': get_today_stats(), 'all': get_all_stats()})
 
 
 # ============================================================

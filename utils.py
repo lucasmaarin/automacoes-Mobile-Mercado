@@ -136,6 +136,43 @@ def get_today_stats() -> dict:
     }
 
 
+def get_all_stats() -> dict:
+    return dict(_daily_stats_data)
+
+
+def _save_usage_to_firestore(tokens: int, cost: float):
+    try:
+        from extensions import get_db
+        from google.cloud import firestore as _fs
+        db = get_db()
+        if not db:
+            return
+        now = datetime.now()
+        today = now.strftime('%Y-%m-%d')
+        year, week, _ = now.isocalendar()
+        week_key = f'{year}-S{week:02d}'
+        month_key = now.strftime('%Y-%m')
+        doc_ref = db.collection('Automacoes').document('uso_ia_stats')
+        update_data = {
+            f'diario.{today}.tokens': _fs.Increment(tokens),
+            f'diario.{today}.cost': _fs.Increment(cost),
+            f'diario.{today}.calls': _fs.Increment(1),
+            f'semanal.{week_key}.tokens': _fs.Increment(tokens),
+            f'semanal.{week_key}.cost': _fs.Increment(cost),
+            f'semanal.{week_key}.calls': _fs.Increment(1),
+            f'mensal.{month_key}.tokens': _fs.Increment(tokens),
+            f'mensal.{month_key}.cost': _fs.Increment(cost),
+            f'mensal.{month_key}.calls': _fs.Increment(1),
+        }
+        try:
+            doc_ref.update(update_data)
+        except Exception:
+            doc_ref.set({'diario': {}, 'semanal': {}, 'mensal': {}})
+            doc_ref.update(update_data)
+    except Exception:
+        pass
+
+
 def record_daily_usage(tokens: int, cost: float):
     today = datetime.now().strftime('%Y-%m-%d')
     if today not in _daily_stats_data:
@@ -144,8 +181,8 @@ def record_daily_usage(tokens: int, cost: float):
     _daily_stats_data[today]['cost'] += cost
     _daily_stats_data[today]['calls'] += 1
     _save_daily_stats()
+    threading.Thread(target=_save_usage_to_firestore, args=(tokens, cost), daemon=True).start()
     try:
-        # defer import to avoid circular import at module load
         from extensions import socketio
         socketio.emit('daily_stats_update', get_today_stats())
     except Exception:

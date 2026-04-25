@@ -990,10 +990,6 @@
                 Automações Mobile Mercado
             </h1>
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                <a href="/relatorio" class="header-link" target="_blank">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                    Relatório
-                </a>
                 <div class="daily-counter" title="Uso total de tokens hoje (todos os agentes)">
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                     Hoje: <strong id="dailyTokens">0</strong> tokens &bull; <strong id="dailyCost">$0.0000</strong>
@@ -1046,7 +1042,7 @@
                 </div>
                 <div class="field">
                     <label>Estabelecimento</label>
-                    <select id="renEstSel" class="est-sel" onchange="handleEstChange('renEstSel','renEstCustom'); $('renCatSel').innerHTML='<option value=&quot;&quot;>-- Todas as categorias --</option>'; $('renSubcatSel').innerHTML='<option value=&quot;&quot;>-- Todas as subcategorias --</option>'">
+                    <select id="renEstSel" class="est-sel" onchange="handleEstChange('renEstSel','renEstCustom'); $('renCatSel').innerHTML='<option value=&quot;&quot;>-- Todas as categorias --</option>'; $('renSubcatSel').innerHTML='<option value=&quot;&quot;>-- Todas as subcategorias --</option>'; updateScopeLabel('renRepadLabel','renCatSel','renSubcatSel')">
                         <option value="" disabled>Carregando...</option>
                     </select>
                     <input type="text" id="renEstCustom" class="est-custom" style="display:none" placeholder="ID personalizado" spellcheck="false">
@@ -1059,7 +1055,7 @@
                     <label class="toggle-sw">
                         <input type="checkbox" id="renRepadronizar">
                         <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                        <span>Repadronizar produtos (produtos já nomeados)</span>
+                        <span id="renRepadLabel" data-base="Repadronizar nomes">Repadronizar nomes (todos os produtos)</span>
                     </label>
                 </div>
             </div>
@@ -1085,7 +1081,7 @@
                             Carregar
                         </button>
                     </div>
-                    <select id="renSubcatSel" style="width:100%;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.84rem">
+                    <select id="renSubcatSel" style="width:100%;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.84rem" onchange="updateScopeLabel('renRepadLabel','renCatSel','renSubcatSel')">
                         <option value="">-- Todas as subcategorias --</option>
                     </select>
                 </div>
@@ -1183,7 +1179,7 @@
                         <label class="toggle-sw">
                             <input type="checkbox" id="catRecategorizar" onchange="Cat.onRecategorizarChange(this.checked)">
                             <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                            <span>Recategorizar produtos (produtos já categorizados)</span>
+                            <span id="catRecatLabel" data-base="Recategorizar produtos">Recategorizar produtos (todos os produtos)</span>
                         </label>
                         <label class="toggle-sw">
                             <input type="checkbox" id="catIncludeMercearia">
@@ -1243,52 +1239,49 @@
                     <div class="prompt-hdr" id="catPromptHdr" onclick="Cat.togglePrompt()">
                         <span style="display:flex;align-items:center;gap:7px">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.55"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                            Instruções da IA <span class="dot" id="catPromptDot" title="Prompt modificado"></span>
+                            Instruções adicionais <span class="dot" id="catPromptDot" title="Instruções modificadas"></span>
                         </span>
                         <span class="arr">&#9660;</span>
                     </div>
                     <div class="prompt-bd" id="catPromptBd">
-                        <textarea class="prompt-ta" id="catPromptTa" placeholder="Carregando..." oninput="Cat.onPromptChange()" spellcheck="false"></textarea>
+                        <textarea class="prompt-ta" id="catPromptTa" placeholder="Exemplos de instruções adicionais:&#10;- Achocolatados em pó: subcategoria &quot;Achocolatados&quot;&#10;- Em caso de dúvida entre duas subcategorias, prefira a mais específica&#10;- Produtos importados: priorizar subcategoria mais próxima ao tipo" oninput="Cat.onPromptChange()" spellcheck="false" style="min-height:120px"></textarea>
+                        <p style="font-size:.78rem;color:var(--text-secondary);margin:6px 0 10px">Estas instruções são acréscimos às regras base da IA. Deixe vazio para usar apenas as regras padrão.</p>
                         <div class="prompt-ft">
                             <button class="btn btn-p" onclick="Cat.savePrompt()">Salvar</button>
-                            <button class="btn btn-ghost" onclick="Cat.restorePrompt()">Restaurar Padrao</button>
+                            <button class="btn btn-ghost" onclick="Cat.restorePrompt()">Limpar</button>
                         </div>
                     </div>
                 </div>
 
-                <div class="card" style="text-align:center">
-                    <button class="btn btn-p" id="catBtn" onclick="Cat.toggle()" style="min-width:180px">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
-                        Iniciar Categorização
-                    </button>
-                </div>
-                <div class="card" id="catProgressCard" style="display:none">
-                    <div class="card-label">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-                        Progresso
+                <button class="btn btn-p btn-w" id="catBtn" onclick="Cat.toggle()">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+                    Iniciar
+                </button>
+                <div class="progress-area" id="catProgressArea">
+                    <div class="cur-item" id="catCurItem"><div id="catCurInfo"></div></div>
+                    <div class="pbar-wrap"><div class="pbar-fill" id="catPbar"></div><div class="pbar-text" id="catPtext">0%</div></div>
+                    <div class="tokens-bar">
+                        <span>Tokens: <strong id="catTokensVal">0</strong></span>
+                        <span>Custo: <strong id="catCostVal">$0.00</strong></span>
                     </div>
-                    <div class="prog-wrap"><div class="prog-bar" id="catProg" style="width:0%"></div></div>
-                    <div style="font-size:.8rem;color:var(--muted);margin-top:6px;text-align:center" id="catProgLabel">0 / 0</div>
-                    <div style="font-size:.78rem;color:var(--text-secondary);margin-top:6px;text-align:center" id="catCurrent"></div>
-                    <div class="stats-grid" style="margin-top:12px">
+                    <div class="stats-row" style="grid-template-columns:repeat(4,1fr)">
                         <div class="stat"><div class="stat-v" id="catTotal">0</div><div class="stat-l">Total</div></div>
                         <div class="stat"><div class="stat-v" id="catProc">0</div><div class="stat-l">Processados</div></div>
                         <div class="stat"><div class="stat-v green" id="catUpd">0</div><div class="stat-l">Atualizados</div></div>
                         <div class="stat"><div class="stat-v red" id="catErr">0</div><div class="stat-l">Erros</div></div>
                     </div>
-                    <div style="font-size:.78rem;color:var(--muted);margin-top:8px;text-align:right" id="catCost"></div>
-                </div>
-                <div class="log-wrap">
-                    <div class="log-header">
-                        <span class="log-title">Log de execução</span>
-                        <button class="log-clear" onclick="$('catLog').innerHTML=''">Limpar</button>
+                    <div class="log-wrap">
+                        <div class="log-header">
+                            <span class="log-title">Log de execução</span>
+                            <button class="log-clear" onclick="$('catLog').innerHTML=''">Limpar</button>
+                        </div>
+                        <div class="log-box" id="catLog"><div class="log-l info">Aguardando...</div></div>
                     </div>
-                    <div class="log-box" id="catLog"><div class="log-l info">Aguardando...</div></div>
-                </div>
-                <div id="catUndo" style="display:none;margin-top:10px;text-align:center">
-                    <button class="btn btn-ghost" style="color:var(--orange);border-color:var(--orange)" onclick="Cat.undo()">
-                        &#8635; Desfazer ultima execucao (<span id="catUndoCount">0</span> produtos)
-                    </button>
+                    <div id="catUndo" style="display:none;margin-top:10px;text-align:center">
+                        <button class="btn btn-ghost" style="color:var(--orange);border-color:var(--orange)" onclick="Cat.undo()">
+                            &#8635; Desfazer ultima execucao (<span id="catUndoCount">0</span> produtos)
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -1420,7 +1413,7 @@
                 </div>
                 <div class="field">
                     <label>Estabelecimento</label>
-                    <select id="tagEstSel" class="est-sel" onchange="handleEstChange('tagEstSel','tagEstCustom'); $('tagCatSel').innerHTML='<option value=&quot;&quot;>-- Todas as categorias --</option>'; $('tagSubcatSel').innerHTML='<option value=&quot;&quot;>-- Todas as subcategorias --</option>'">
+                    <select id="tagEstSel" class="est-sel" onchange="handleEstChange('tagEstSel','tagEstCustom'); $('tagCatSel').innerHTML='<option value=&quot;&quot;>-- Todas as categorias --</option>'; $('tagSubcatSel').innerHTML='<option value=&quot;&quot;>-- Todas as subcategorias --</option>'; updateScopeLabel('tagOverwriteLabel','tagCatSel','tagSubcatSel')">
                         <option value="" disabled>Carregando...</option>
                     </select>
                     <input type="text" id="tagEstCustom" class="est-custom" style="display:none" placeholder="ID personalizado" spellcheck="false">
@@ -1429,7 +1422,7 @@
                     <label class="toggle-sw">
                         <input type="checkbox" id="tagOverwrite">
                         <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                        <span>Sobrescrever tags (processar todos os produtos)</span>
+                        <span id="tagOverwriteLabel" data-base="Sobrescrever tags">Sobrescrever tags (todos os produtos)</span>
                     </label>
                 </div>
             </div>
@@ -1455,7 +1448,7 @@
                             Carregar
                         </button>
                     </div>
-                    <select id="tagSubcatSel" style="width:100%;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.84rem">
+                    <select id="tagSubcatSel" style="width:100%;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.84rem" onchange="updateScopeLabel('tagOverwriteLabel','tagCatSel','tagSubcatSel')">
                         <option value="">-- Todas as subcategorias --</option>
                     </select>
                 </div>
@@ -1465,15 +1458,16 @@
                 <div class="prompt-hdr" id="tagPromptHdr" onclick="Tagger.togglePrompt()">
                     <span style="display:flex;align-items:center;gap:7px">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.55"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                        Prompt de imagens <span class="dot" id="tagPromptDot" title="Prompt modificado"></span>
+                        Instruções adicionais <span class="dot" id="tagPromptDot" title="Instruções modificadas"></span>
                     </span>
                     <span class="arr">&#9660;</span>
                 </div>
                 <div class="prompt-bd" id="tagPromptBd" style="display:none">
-                    <textarea class="prompt-ta" id="tagPromptTa" placeholder="Carregando..." oninput="Tagger.onPromptChange()" spellcheck="false"></textarea>
+                    <textarea class="prompt-ta" id="tagPromptTa" placeholder="Exemplos de instruções adicionais:&#10;- Marca &quot;Nestlé&quot;: identificar também como &quot;Nescafé&quot; para produtos de café&#10;- Embalagens do tipo lata: incluir &quot;Lata&quot; independente do volume&#10;- Produtos a granel: embalagem deve ser &quot;A granel&quot;" oninput="Tagger.onPromptChange()" spellcheck="false" style="min-height:120px"></textarea>
+                    <p style="font-size:.78rem;color:var(--text-secondary);margin:6px 0 10px">Estas instruções são acréscimos às regras base da IA. Deixe vazio para usar apenas as regras padrão.</p>
                     <div class="prompt-ft">
                         <button class="btn btn-p" onclick="Tagger.savePrompt()">Salvar</button>
-                        <button class="btn btn-ghost" onclick="Tagger.restorePrompt()">Restaurar Padrão</button>
+                        <button class="btn btn-ghost" onclick="Tagger.restorePrompt()">Limpar</button>
                     </div>
                 </div>
             </div>
@@ -1575,24 +1569,6 @@
                 </div>
             </div>
 
-            <div class="card" style="margin-bottom:16px">
-                <div class="card-label">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.55"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                    Prompt Base da IA
-                </div>
-                <p style="font-size:.82rem;color:var(--text-secondary);margin-bottom:14px">
-                    Regras completas usadas internamente pelo padronizador. Alterações afetam todos os padronizamentos.
-                </p>
-                <textarea id="basePromptTa" spellcheck="false" oninput="PromptAdmin.onBasePromptChange()"
-                    style="width:100%;min-height:360px;font-family:var(--mono);font-size:.8rem;background:var(--surface-alt);border:1px solid var(--border);border-radius:6px;padding:10px;resize:vertical;color:var(--text);box-sizing:border-box"
-                    placeholder="Carregando..."></textarea>
-                <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
-                    <button class="btn btn-p" onclick="PromptAdmin.saveBasePrompt()">Salvar no Firestore</button>
-                    <button class="btn btn-ghost" onclick="PromptAdmin.restoreBasePrompt()">Restaurar Padrão</button>
-                    <span class="dot" id="basePromptDot" title="Prompt base modificado" style="margin-left:4px"></span>
-                </div>
-            </div>
-
             <div class="card">
                 <div class="card-label">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -1641,6 +1617,13 @@
     // === Help toggle ===
     function toggleHelp(id) {
         document.getElementById(id).classList.toggle('open');
+    }
+
+    function updateScopeLabel(spanId, catSelId, subcatSelId) {
+        const span = $(spanId);
+        if (!span) return;
+        const hasFilter = ($(catSelId) && $(catSelId).value) || ($(subcatSelId) && $(subcatSelId).value);
+        span.textContent = span.dataset.base + (hasFilter ? ' (produtos da seleção)' : ' (todos os produtos)');
     }
 
     // === Establishment helpers ===
@@ -1754,6 +1737,7 @@
 
         onCategoryChange() {
             $('renSubcatSel').innerHTML = '<option value="">-- Todas as subcategorias --</option>';
+            updateScopeLabel('renRepadLabel', 'renCatSel', 'renSubcatSel');
         },
 
         async loadSubcategories() {
@@ -1906,41 +1890,6 @@
         }
     };
 
-    // === PromptAdmin (prompt base — somente admin) ===
-    const PromptAdmin = {
-        _saved: null, _default: null,
-
-        async loadBasePrompt() {
-            try {
-                const r = await (await fetch(API+'/api/renamer/prompt')).json();
-                if(r.success) { $('basePromptTa').value=r.base_prompt||''; this._saved=r.base_prompt||''; this._default=r.default_base_prompt||''; this.checkDirty(); }
-            } catch(e) { if($('basePromptTa')) $('basePromptTa').value='Erro: '+e.message; }
-        },
-
-        onBasePromptChange() { this.checkDirty(); },
-
-        checkDirty() {
-            const dot=$('basePromptDot');
-            if(!dot) return;
-            const dirty = $('basePromptTa').value.trim() !== (this._saved||'').trim();
-            dot.classList.toggle('show', dirty);
-        },
-
-        async saveBasePrompt() {
-            const p = $('basePromptTa').value.trim();
-            if(!p) { toast('Prompt base vazio','error'); return; }
-            try {
-                const r = await (await fetch(API+'/api/renamer/prompt',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:p})})).json();
-                if(r.success) { this._saved=p; this.checkDirty(); toast('Prompt base salvo no Firestore','success'); }
-                else toast('Erro: '+r.error,'error');
-            } catch(e) { toast('Erro: '+e.message,'error'); }
-        },
-
-        restoreBasePrompt() {
-            if(this._default) { $('basePromptTa').value=this._default; this.checkDirty(); toast('Prompt base restaurado (não salvo)','info'); }
-        },
-    };
-
     // === JSON syntax highlight ===
     function syntaxHighlight(obj) {
         const json = JSON.stringify(obj, null, 2);
@@ -2044,7 +1993,6 @@
             const maxCats = parseInt($('catMaxCats').value) || 2;
             const fallbackCat = $('catFallbackCat').value || null;
             const fallbackSub = $('catFallbackSub').value || null;
-            const prompt = $('catPromptTa').value.trim();
 
             this._findMode = false;
             const payload = {
@@ -2059,7 +2007,6 @@
             if(filterSubcat) payload.filter_subcategory_id = filterSubcat;
             if(fallbackCat) payload.fallback_category_id = fallbackCat;
             if(fallbackSub) payload.fallback_subcategory_id = fallbackSub;
-            if(prompt) payload.custom_prompt = prompt;
 
             try {
                 const r = await (await fetch(API+'/api/categorizer/start',{
@@ -2067,7 +2014,7 @@
                     headers:{'Content-Type':'application/json'},
                     body:JSON.stringify(payload)
                 })).json();
-                if(r.success){ this._running=true; this.btnState(true); $('catProgressCard').style.display=''; $('catLog').innerHTML=''; toast('Categorizacao iniciada','success'); }
+                if(r.success){ this._running=true; this.btnState(true); $('catProgressArea').classList.add('active'); $('catLog').innerHTML=''; toast('Categorizacao iniciada','success'); }
                 else { toast(r.error||'Erro ao iniciar','error'); }
             } catch(e){ toast('Erro: '+e.message,'error'); }
         },
@@ -2082,22 +2029,21 @@
         async loadPrompt() {
             try {
                 const r = await (await fetch(API+'/api/categorizer/prompt')).json();
-                if(r.success){ $('catPromptTa').value=r.prompt; this._default=r.default_prompt; this._saved=r.prompt; this._loaded=true; this.checkPromptDirty(); }
+                if(r.success){ $('catPromptTa').value=r.user_additions||''; this._saved=r.user_additions||''; this._loaded=true; this.checkPromptDirty(); }
             } catch(e){ $('catPromptTa').value='Erro: '+e.message; }
         },
 
         async savePrompt() {
-            const p = $('catPromptTa').value.trim();
-            if(!p){ toast('Prompt vazio','error'); return; }
+            const p = $('catPromptTa').value;
             try {
-                const r = await (await fetch(API+'/api/categorizer/prompt',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:p})})).json();
-                if(r.success){ this._saved=p; this.checkPromptDirty(); toast('Prompt salvo no Firestore','success'); }
+                const r = await (await fetch(API+'/api/categorizer/prompt',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_additions:p})})).json();
+                if(r.success){ this._saved=p; this.checkPromptDirty(); toast('Instruções adicionais salvas','success'); }
                 else toast('Erro: '+r.error,'error');
             } catch(e){ toast('Erro: '+e.message,'error'); }
         },
 
         restorePrompt() {
-            if(this._default){ $('catPromptTa').value=this._default; this.checkPromptDirty(); }
+            $('catPromptTa').value=''; this.checkPromptDirty();
         },
 
         onPromptChange() { this.checkPromptDirty(); },
@@ -2119,31 +2065,32 @@
             if(!prog) return;
             const loading = this._running && prog.total === 0;
             if(loading) {
-                $('catProg').classList.add('loading'); $('catProg').style.width='';
-                $('catProgLabel').textContent = 'Carregando dados...';
+                $('catPbar').classList.add('loading'); $('catPbar').style.width='';
+                $('catPtext').textContent = 'Carregando...';
             } else {
-                $('catProg').classList.remove('loading');
+                $('catPbar').classList.remove('loading');
                 const pct = prog.total>0 ? Math.round(prog.processed/prog.total*100) : 0;
-                $('catProg').style.width = pct+'%';
-                $('catProgLabel').textContent = `${prog.processed} / ${prog.total} (${pct}%)`;
+                $('catPbar').style.width = pct+'%';
+                $('catPtext').textContent = pct+'%';
             }
             $('catTotal').textContent = prog.total||0;
             $('catProc').textContent = prog.processed||0;
             $('catUpd').textContent = prog.updated||0;
             $('catErr').textContent = prog.errors||0;
-            if(prog.estimated_cost!=null) $('catCost').textContent = `Tokens: ${(prog.tokens_used||0).toLocaleString()} | Custo: $${(prog.estimated_cost||0).toFixed(4)}`;
-            if(cur && cur.name) $('catCurrent').textContent = `[${cur.index}/${cur.total}] ${cur.name}`;
-            else if(!this._running) $('catCurrent').textContent = '';
-            if(this._running || prog.total>0) $('catProgressCard').style.display='';
-            else $('catProgressCard').style.display='none';
+            $('catTokensVal').textContent = (prog.tokens_used||0).toLocaleString();
+            $('catCostVal').textContent = '$'+(prog.estimated_cost||0).toFixed(4);
+            if(cur && cur.name) $('catCurInfo').textContent = cur.name;
+            else if(!this._running) $('catCurInfo').textContent = '';
+            if(this._running || prog.total>0) $('catProgressArea').classList.add('active');
+            else $('catProgressArea').classList.remove('active');
             if(prog.processed>=prog.total && prog.total>0){ this._running=false; this.btnState(false); this.refreshUndo(); }
         },
 
         btnState(running) {
             this._running = running!=null ? running : this._running;
             const b=$('catBtn');
-            if(this._running){ b.className='btn btn-d'; b.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg> Parar'; }
-            else { b.className='btn btn-p'; b.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Iniciar Categorização'; }
+            if(this._running){ b.className='btn btn-d btn-w'; b.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg> Parar'; }
+            else { b.className='btn btn-p btn-w'; b.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Iniciar'; }
         },
 
         async refreshUndo() {
@@ -2212,9 +2159,12 @@
 
         onCategoryChange() {
             $('catSubcatSel').innerHTML = '<option value="">-- Todas as subcategorias --</option>';
+            updateScopeLabel('catRecatLabel', 'catFilterCategory', 'catSubcatSel');
         },
 
-        onSubcatChange() {},
+        onSubcatChange() {
+            updateScopeLabel('catRecatLabel', 'catFilterCategory', 'catSubcatSel');
+        },
 
         onRecategorizarChange(checked) {
             const catFilter = $('catCategoryFilter');
@@ -2226,6 +2176,7 @@
             if (!checked) {
                 $('catFilterCategory').value = '';
                 $('catSubcatSel').innerHTML = '<option value="">-- Todas as subcategorias --</option>';
+                updateScopeLabel('catRecatLabel', 'catFilterCategory', 'catSubcatSel');
             }
         },
 
@@ -2265,11 +2216,11 @@
             if (!btn) return;
             this._running = running !== undefined ? running : this._running;
             if (this._running) {
-                btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Parar';
-                btn.classList.add('btn-danger');
+                btn.className = 'btn btn-d btn-w';
+                btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg> Parar';
             } else {
+                btn.className = 'btn btn-p btn-w';
                 btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Iniciar';
-                btn.classList.remove('btn-danger');
             }
         },
 
@@ -2313,6 +2264,7 @@
 
         onCategoryChange() {
             $('tagSubcatSel').innerHTML = '<option value="">-- Todas as subcategorias --</option>';
+            updateScopeLabel('tagOverwriteLabel', 'tagCatSel', 'tagSubcatSel');
         },
 
         async loadSubcategories() {
@@ -2380,9 +2332,8 @@
             try {
                 const r = await (await fetch(API + '/api/tagger/prompt')).json();
                 if (r.success) {
-                    $('tagPromptTa').value = r.prompt;
-                    this._default = r.default_prompt;
-                    this._saved = r.prompt;
+                    $('tagPromptTa').value = r.user_additions || '';
+                    this._saved = r.user_additions || '';
                     this._promptLoaded = true;
                     this.checkPromptDirty();
                 }
@@ -2390,17 +2341,16 @@
         },
 
         async savePrompt() {
-            const p = $('tagPromptTa').value.trim();
-            if (!p) { toast('Prompt vazio', 'error'); return; }
+            const p = $('tagPromptTa').value;
             try {
-                const r = await (await fetch(API + '/api/tagger/prompt', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({prompt: p})})).json();
-                if (r.success) { this._saved = p; this.checkPromptDirty(); toast('Prompt salvo no Firestore', 'success'); }
+                const r = await (await fetch(API + '/api/tagger/prompt', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({user_additions: p})})).json();
+                if (r.success) { this._saved = p; this.checkPromptDirty(); toast('Instruções adicionais salvas', 'success'); }
                 else toast('Erro: ' + r.error, 'error');
             } catch(e) { toast('Erro: ' + e.message, 'error'); }
         },
 
         restorePrompt() {
-            if (this._default) { $('tagPromptTa').value = this._default; this.checkPromptDirty(); }
+            $('tagPromptTa').value = ''; this.checkPromptDirty();
         },
 
         onPromptChange() { this.checkPromptDirty(); },
@@ -2837,7 +2787,6 @@
         fetch(API+'/api/stats/daily').then(r=>r.json()).then(d=>{ if(d.today) updateDailyStats(d.today); }).catch(()=>{});
         Renamer.loadUserAdditions();
         Renamer.loadErrorLog();
-        PromptAdmin.loadBasePrompt();
         Cat.loadPrompt();
         Tagger.loadPrompt();
         // Skeleton some quando: Settings.load() (tema Firestore) + socket connect

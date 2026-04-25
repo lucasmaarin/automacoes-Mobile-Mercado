@@ -176,6 +176,16 @@ class ProductTagger:
         "Sem markdown, sem explicacoes."
     )
 
+    _BRANDS_NAME_FALLBACK_PROMPT = (
+        "Voce recebera nomes de produtos de supermercado.\n"
+        "Identifique a MARCA do produto a partir do nome — geralmente e o primeiro token reconhecivel como marca comercial.\n"
+        "Retorne a tag de marca em minusculas, sem acentos, sem espacos. Ex: #nissin, #nestle, #barilla.\n"
+        "Se nao for possivel identificar a marca com certeza pelo nome, retorne null.\n"
+        "Nao confunda descricao do produto com marca (ex: 'Agua Mineral' nao tem marca identificavel).\n"
+        "Responda com JSON: {\"1\": \"#marca\", \"2\": null, ...}\n"
+        "Sem markdown, sem explicacoes."
+    )
+
     _PACKAGING_PROMPT = (
         "Voce recebera o nome e a foto de cada produto de supermercado.\n"
         "Sua UNICA tarefa: identificar o TIPO DE EMBALAGEM do produto pela foto.\n"
@@ -209,33 +219,31 @@ class ProductTagger:
         self.tokens_used = 0
         self.estimated_cost = 0.0
         self._lock = threading.Lock()
-        self._packaging_prompt = self.load_prompt_from_firestore()
+        self._user_additions = self._load_user_additions()
 
-    def load_prompt_from_firestore(self) -> str:
+    def _load_user_additions(self) -> str:
         try:
             doc = self.db.collection('Automacoes').document('taggeador').get()
             if doc.exists:
-                prompt = (doc.to_dict() or {}).get('packaging_prompt', '').strip()
-                if prompt:
-                    logger.info("Prompt carregado do Firestore (Automacoes/taggeador)")
-                    return prompt
+                additions = (doc.to_dict() or {}).get('user_additions', '')
+                if additions:
+                    logger.info("Instrucoes adicionais do tagger carregadas do Firestore")
+                    return additions
         except Exception as e:
-            logger.warning(f"Nao foi possivel carregar prompt do tagger: {e}")
-        return self._PACKAGING_PROMPT
+            logger.warning(f"Nao foi possivel carregar instrucoes adicionais do tagger: {e}")
+        return ''
 
-    def save_prompt_to_firestore(self, prompt: str) -> bool:
+    def save_user_additions_to_firestore(self, additions: str) -> bool:
         try:
             self.db.collection('Automacoes').document('taggeador').set({
-                'packaging_prompt': prompt,
+                'user_additions': additions,
                 'updated_at': datetime.now().isoformat(),
-                'tool': 'taggeador',
-                'description': 'Prompt usado pela IA para taggear produtos por imagem',
             }, merge=True)
-            self._packaging_prompt = prompt
-            logger.info("Prompt salvo no Firestore (Automacoes/taggeador)")
+            self._user_additions = additions
+            logger.info("Instrucoes adicionais do tagger salvas no Firestore")
             return True
         except Exception as e:
-            logger.error(f"Erro ao salvar prompt do tagger: {e}")
+            logger.error(f"Erro ao salvar instrucoes adicionais do tagger: {e}")
             return False
 
     # ------------------------------------------------------------------
@@ -320,7 +328,10 @@ class ProductTagger:
 
     def get_packaging_batch(self, products: list, max_retries: int = 8) -> dict:
         """Retorna {index: '#tag'} com a tag de embalagem identificada pela foto."""
-        user_content = [{"type": "text", "text": self._packaging_prompt + "\n\nProdutos:\n"}]
+        base = self._PACKAGING_PROMPT
+        if self._user_additions:
+            base = base + '\n\nInstruções adicionais:\n' + self._user_additions
+        user_content = [{"type": "text", "text": base + "\n\nProdutos:\n"}]
 
         for i, p in enumerate(products):
             user_content.append({"type": "text", "text": f"Produto {i + 1}: {p['name']}"})
@@ -472,6 +483,43 @@ class ProductTagger:
                 resp = _ext.openai_client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[{"role": "user", "content": user_content}],
+                    max_tokens=20 * len(products),
+                    temperature=0
+                )
+                self._record_usage(resp.usage)
+                data = json.loads(self._clean_json(resp.choices[0].message.content))
+                result = {}
+                for k, v in data.items():
+                    try:
+                        idx = int(k) - 1
+                    except (ValueError, TypeError):
+                        continue
+                    if v and isinstance(v, str) and v.startswith('#'):
+                        result[idx] = v.lower().strip()
+                return result
+            except _openai_module.RateLimitError as e:
+                if _ext._is_quota_error(e):
+                    _ext.emit_quota_exceeded()
+                    raise
+                wait = _parse_rate_limit_wait(e)
+                self.log_message(f"Rate limit, aguardando {wait:.1f}s...", "warning")
+                time.sleep(wait)
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                else:
+                    raise
+        return {}
+
+    def get_brands_from_names_batch(self, products: list, max_retries: int = 8) -> dict:
+        """Fallback: identifica marcas apenas pelo nome, sem imagens."""
+        lines = "\n".join(f"{i+1}. {p['name']}" for i, p in enumerate(products))
+        prompt = self._BRANDS_NAME_FALLBACK_PROMPT + f"\n\nProdutos:\n{lines}"
+        for attempt in range(max_retries):
+            try:
+                resp = _ext.openai_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": prompt}],
                     max_tokens=20 * len(products),
                     temperature=0
                 )
@@ -760,14 +808,26 @@ class ProductTagger:
         self._update_progress(updated=updated, skipped=skipped, errors=errors)
 
     def _process_brands_chunk(self, chunk, estabelecimento_id, dry_run, overwrite=False):
-        """Identifica marcas via imagem e adiciona tag de marca."""
+        """Identifica marcas via imagem; usa nome como fallback quando imagem não identifica."""
         if not tagger_state['running']:
             return
         try:
             brands_map = self.get_brands_batch(chunk)
         except Exception as e:
-            self.log_message(f"Erro ao identificar marcas: {e}", "error")
+            self.log_message(f"Erro ao identificar marcas (imagem): {e}", "error")
             brands_map = {}
+
+        # Fallback por nome para produtos sem marca identificada pela imagem
+        missing = [j for j in range(len(chunk)) if j not in brands_map]
+        if missing:
+            fallback_products = [chunk[j] for j in missing]
+            try:
+                fallback_map = self.get_brands_from_names_batch(fallback_products)
+                for fi, brand in fallback_map.items():
+                    if fi < len(missing):
+                        brands_map[missing[fi]] = brand
+            except Exception as e:
+                self.log_message(f"Erro ao identificar marcas (nome): {e}", "error")
 
         updates = []
         updated = skipped = errors = 0
