@@ -3170,7 +3170,6 @@ def tagger_logs():
 # Rotas: Backup de produtos
 # ============================================================
 @app.route('/api/backup/download/<filename>')
-@login_required
 def download_backup(filename):
     if '..' in filename or '/' in filename or '\\' in filename:
         return jsonify({'error': 'Nome de arquivo inválido'}), 400
