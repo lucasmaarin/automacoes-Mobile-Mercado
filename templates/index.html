@@ -803,16 +803,17 @@
         }
         .header-link:hover { background: var(--accent); color: #fff; }
 
-        /* Undo button melhorado */
-        .undo-bar {
+        /* Backup bar */
+        .backup-bar {
             display: none; margin-top: 10px;
-            padding: 10px 14px; border-radius: var(--radius);
-            background: var(--orange-light); border: 1px solid #fde68a;
-            display: flex; align-items: center; gap: 10px;
+            padding: 9px 14px; border-radius: var(--radius);
+            background: var(--surface); border: 1px solid var(--border);
+            align-items: center; gap: 10px;
         }
-        .undo-bar .undo-text { font-size: .8rem; color: #92400e; flex: 1; }
-        .undo-bar .btn-undo { font-size: .78rem; padding: 5px 12px; border-radius: var(--radius); background: var(--orange); color: #fff; border: none; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; transition: background .15s; }
-        .undo-bar .btn-undo:hover { background: #d97706; }
+        .backup-bar.visible { display: flex; }
+        .backup-bar .backup-text { font-size: .8rem; color: var(--text-secondary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .backup-bar .btn-backup { font-size: .78rem; padding: 5px 12px; border-radius: var(--radius); background: var(--accent); color: #fff; border: none; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; white-space: nowrap; }
+        .backup-bar .btn-backup:hover { opacity: .88; }
 
         /* ============================================================
            RESPONSIVIDADE MOBILE
@@ -1032,7 +1033,7 @@
                     <strong>Padronizador de Nomes</strong>
                     Usa IA para reescrever e padronizar os nomes dos produtos do estabelecimento selecionado.<br>
                     <strong>Fluxo:</strong> selecione o estabelecimento → filtre por categoria/subcategoria (opcional) → clique em <em>Iniciar</em>.<br>
-                    Por padrão processa apenas produtos com <strong>nomes brutos</strong> (todo maiúsculo / abreviações). Ative <em>Repadronizar</em> para processar somente os que já foram padronizados anteriormente. Ao finalizar, um botão de desfazer permite reverter toda a execução.
+                    Por padrão processa apenas produtos com <strong>nomes brutos</strong> (todo maiúsculo / abreviações). Ative <em>Repadronizar</em> para processar somente os que já foram padronizados anteriormente. Um backup dos produtos é criado antes de qualquer alteração.
                 </div>
             </div>
             <div class="card">
@@ -1056,6 +1057,11 @@
                         <input type="checkbox" id="renRepadronizar">
                         <span class="toggle-track"><span class="toggle-thumb"></span></span>
                         <span id="renRepadLabel" data-base="Repadronizar nomes">Repadronizar nomes (todos os produtos)</span>
+                    </label>
+                    <label class="toggle-sw">
+                        <input type="checkbox" id="renBackup" checked>
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                        <span>Criar backup antes de iniciar</span>
                     </label>
                 </div>
             </div>
@@ -1137,10 +1143,9 @@
                     </div>
                     <div class="log-box" id="errorLog" style="max-height:160px"></div>
                 </div>
-                <div id="renUndo" style="display:none;margin-top:10px;text-align:center">
-                    <button class="btn btn-ghost" style="color:var(--orange);border-color:var(--orange)" onclick="Renamer.undo()">
-                        &#8635; Desfazer ultima execucao (<span id="renUndoCount">0</span> produtos)
-                    </button>
+                <div class="backup-bar" id="renBackupBar">
+                    <span class="backup-text" id="renBackupName"></span>
+                    <a class="btn-backup" id="renBackupLink" href="#" download>&#8681; Baixar backup</a>
                 </div>
             </div>
         </div>
@@ -1157,7 +1162,7 @@
                         <strong>Categorizador Automático</strong>
                         Analisa o nome de cada produto e define automaticamente a <em>categoria</em> e a <em>subcategoria</em> mais adequada, escolhendo entre todas as opções disponíveis no Firestore.<br>
                         Por padrão, processa apenas produtos <strong>sem categoria</strong>. Ative <em>Recategorizar produtos</em> para processar também os já categorizados — com isso os filtros de categoria e subcategoria ficam disponíveis para restringir quais produtos serão realocados.<br>
-                        Ao finalizar, um botão de desfazer permite reverter a execução.
+                        Um backup dos produtos é criado antes de qualquer alteração.
                     </div>
                 </div>
                 <div class="card">
@@ -1180,6 +1185,11 @@
                             <input type="checkbox" id="catRecategorizar" onchange="Cat.onRecategorizarChange(this.checked)">
                             <span class="toggle-track"><span class="toggle-thumb"></span></span>
                             <span id="catRecatLabel" data-base="Recategorizar produtos">Recategorizar produtos (todos os produtos)</span>
+                        </label>
+                        <label class="toggle-sw">
+                            <input type="checkbox" id="catBackup" checked>
+                            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                            <span>Criar backup antes de iniciar</span>
                         </label>
                         <label class="toggle-sw">
                             <input type="checkbox" id="catIncludeMercearia">
@@ -1277,10 +1287,9 @@
                         </div>
                         <div class="log-box" id="catLog"><div class="log-l info">Aguardando...</div></div>
                     </div>
-                    <div id="catUndo" style="display:none;margin-top:10px;text-align:center">
-                        <button class="btn btn-ghost" style="color:var(--orange);border-color:var(--orange)" onclick="Cat.undo()">
-                            &#8635; Desfazer ultima execucao (<span id="catUndoCount">0</span> produtos)
-                        </button>
+                    <div class="backup-bar" id="catBackupBar">
+                        <span class="backup-text" id="catBackupName"></span>
+                        <a class="btn-backup" id="catBackupLink" href="#" download>&#8681; Baixar backup</a>
                     </div>
                 </div>
             </div>
@@ -1424,6 +1433,11 @@
                         <span class="toggle-track"><span class="toggle-thumb"></span></span>
                         <span id="tagOverwriteLabel" data-base="Sobrescrever tags">Sobrescrever tags (todos os produtos)</span>
                     </label>
+                    <label class="toggle-sw">
+                        <input type="checkbox" id="tagBackup" checked>
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                        <span>Criar backup antes de iniciar</span>
+                    </label>
                 </div>
             </div>
 
@@ -1497,6 +1511,10 @@
                         <button class="log-clear" onclick="$('taggerLog').innerHTML=''">Limpar</button>
                     </div>
                     <div class="log-box" id="taggerLog"><div class="log-l info">Aguardando...</div></div>
+                </div>
+                <div class="backup-bar" id="tagBackupBar">
+                    <span class="backup-text" id="tagBackupName"></span>
+                    <a class="btn-backup" id="tagBackupLink" href="#" download>&#8681; Baixar backup</a>
                 </div>
             </div>
         </div>
@@ -1666,6 +1684,15 @@
         socket.on('tagger_progress_update', d => Tagger.progress(d.progress, d.current_product));
         socket.on('tagger_status_update', d => { Tagger._running = d.running; Tagger.progress(d.progress, d.current_product); Tagger.btnState(d.running); if(d.running || (d.progress && d.progress.total > 0)) $('tagProgressArea').classList.add('active'); });
         socket.on('tagger_logs_update', d => { $('taggerLog').innerHTML = d.logs?.length ? '' : '<div class="log-l info">Aguardando...</div>'; (d.logs||[]).forEach(l=>addLog('taggerLog',l.message,l.level)); });
+        socket.on('backup_created', d => {
+            const map = {renamer: ['renBackupBar','renBackupName','renBackupLink'], categorizer: ['catBackupBar','catBackupName','catBackupLink'], tagger: ['tagBackupBar','tagBackupName','tagBackupLink']};
+            const ids = map[d.automation];
+            if (!ids) return;
+            const [barId, nameId, linkId] = ids;
+            $(''+nameId).textContent = d.filename;
+            $(''+linkId).href = API + '/api/backup/download/' + encodeURIComponent(d.filename);
+            $(''+barId).classList.add('visible');
+        });
         socket.on('daily_stats_update', d => updateDailyStats(d));
         socket.on('openai_quota_exceeded', d => {
             const banner = document.getElementById('quotaBanner');
@@ -1786,7 +1813,8 @@
                 delay,
                 categories: cats,
                 only_raw_names: !repadronizar,
-                only_standardized: repadronizar
+                only_standardized: repadronizar,
+                create_backup: $('renBackup').checked
             };
             if(filterSubcatId) payload.filter_subcategory_id = filterSubcatId;
             try {
@@ -1818,7 +1846,7 @@
                 }
                 if(isRunning || p.total>0) $('progressArea').classList.add('active');
                 else $('progressArea').classList.remove('active');
-                if(p.processed>=p.total && p.total>0) this.refreshUndo();
+                if(p.processed>=p.total && p.total>0) { /* backup shown via socket event */ }
             }
             if(cur) {
                 $('curInfo').innerHTML='<strong>'+cur.index+'/'+cur.total+'</strong> &mdash; <strong>ID:</strong> '+cur.id+'<br><strong>Original:</strong> '+cur.name+'<br><strong>Novo:</strong> '+(cur.improved_name||'processando...');
@@ -1837,24 +1865,6 @@
                 b.className='btn btn-p btn-w';
                 b.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Iniciar';
             }
-        },
-
-        async refreshUndo() {
-            try {
-                const r = await (await fetch(API+'/api/renamer/undo-info')).json();
-                const d = $('renUndo');
-                if(r.available){ $('renUndoCount').textContent=r.count; d.style.display=''; }
-                else d.style.display='none';
-            } catch(e){}
-        },
-
-        async undo() {
-            if(!confirm('Desfazer todas as '+$('renUndoCount').textContent+' alteracoes de nomes da ultima execucao?')) return;
-            try {
-                const r = await (await fetch(API+'/api/renamer/undo',{method:'POST'})).json();
-                if(r.success){ toast('Revertidos '+r.reverted+' produtos'+(r.errors?' ('+r.errors+' erros)':''),'success'); $('renUndo').style.display='none'; }
-                else toast('Erro: '+r.error,'error');
-            } catch(e){ toast('Erro: '+e.message,'error'); }
         },
 
         addErrorLog(entry) {
@@ -2001,7 +2011,8 @@
                 only_uncategorized: !recategorizar,
                 review_categorized: recategorizar,
                 include_mercearia: includeMercearia,
-                max_categories: maxCats
+                max_categories: maxCats,
+                create_backup: $('catBackup').checked
             };
             if(filterCategory) payload.filter_category_id = filterCategory;
             if(filterSubcat) payload.filter_subcategory_id = filterSubcat;
@@ -2083,7 +2094,7 @@
             else if(!this._running) $('catCurInfo').textContent = '';
             if(this._running || prog.total>0) $('catProgressArea').classList.add('active');
             else $('catProgressArea').classList.remove('active');
-            if(prog.processed>=prog.total && prog.total>0){ this._running=false; this.btnState(false); this.refreshUndo(); }
+            if(prog.processed>=prog.total && prog.total>0){ this._running=false; this.btnState(false); }
         },
 
         btnState(running) {
@@ -2091,24 +2102,6 @@
             const b=$('catBtn');
             if(this._running){ b.className='btn btn-d btn-w'; b.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg> Parar'; }
             else { b.className='btn btn-p btn-w'; b.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Iniciar'; }
-        },
-
-        async refreshUndo() {
-            try {
-                const r = await (await fetch(API+'/api/categorizer/undo-info')).json();
-                const d = $('catUndo');
-                if(r.available){ $('catUndoCount').textContent=r.count; d.style.display=''; }
-                else d.style.display='none';
-            } catch(e){}
-        },
-
-        async undo() {
-            if(!confirm('Desfazer todas as '+$('catUndoCount').textContent+' alteracoes de categoria da ultima execucao?')) return;
-            try {
-                const r = await (await fetch(API+'/api/categorizer/undo',{method:'POST'})).json();
-                if(r.success){ toast('Revertidos '+r.reverted+' produtos'+(r.errors?' ('+r.errors+' erros)':''),'success'); $('catUndo').style.display='none'; }
-                else toast('Erro: '+r.error,'error');
-            } catch(e){ toast('Erro: '+e.message,'error'); }
         },
 
         async loadCategories() {
@@ -2314,7 +2307,8 @@
                 only_untagged: !overwrite,
                 categories: this.getSelectedCategories(),
                 filter_subcategory_id: $('tagSubcatSel').value || null,
-                delay: 0
+                delay: 0,
+                create_backup: $('tagBackup').checked
             };
             try {
                 const r = await (await fetch(API + '/api/tagger/start', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)})).json();
@@ -2391,7 +2385,7 @@
         {
             target: '#tab-renamer',
             title: 'Padronizador de Nomes',
-            text: 'Reescreve e padroniza os nomes dos produtos usando IA. Filtre por categoria e subcategoria (opcional) e clique em Iniciar. "Apenas nomes brutos" (ativo por padrão) processa só produtos ainda não padronizados; "Repadronizar" processa os que já foram padronizados. Ao finalizar, um botão de desfazer permite reverter a execução.',
+            text: 'Reescreve e padroniza os nomes dos produtos usando IA. Filtre por categoria e subcategoria (opcional) e clique em Iniciar. "Apenas nomes brutos" (ativo por padrão) processa só produtos ainda não padronizados; "Repadronizar" processa os que já foram padronizados. Um backup dos produtos é criado automaticamente antes de qualquer alteração.',
             tab: 'renamer', subtab: null
         },
         {

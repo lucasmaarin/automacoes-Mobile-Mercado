@@ -22,7 +22,7 @@ from firebase_admin import credentials, firestore
 from openai import OpenAI
 import openai as _openai_module
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify, render_template, Response, session, redirect, url_for
+from flask import Flask, request, jsonify, render_template, Response, session, redirect, url_for, send_file
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 
@@ -1784,7 +1784,7 @@ class ProductCategorizerAgent:
                            only_uncategorized=False, filter_category_id=None,
                            include_mercearia=False, filter_subcategory_id=None,
                            use_images=False, fallback_category_id=None, fallback_subcategory_id=None,
-                           review_categorized=False, max_categories=2):
+                           review_categorized=False, max_categories=2, create_backup=True):
         try:
             self.tokens_used = 0
             self.estimated_cost = 0
@@ -1807,7 +1807,8 @@ class ProductCategorizerAgent:
             except Exception:
                 pass
 
-            self.log_message(f"Iniciando categorizacao para: {estabelecimento_id}", "info")
+            start_time = datetime.now().strftime("%H:%M:%S")
+            self.log_message(f"Processo iniciado às {start_time} — estabelecimento: {estabelecimento_id}", "info")
             if dry_run:
                 self.log_message("MODO DRY RUN - Nenhuma atualizacao sera feita", "warning")
 
@@ -1847,6 +1848,18 @@ class ProductCategorizerAgent:
                 self.log_message("Nenhum produto encontrado com os filtros aplicados", "warning")
                 categorizer_state['running'] = False
                 return False
+
+            if create_backup:
+                try:
+                    from utils import create_backup_file
+                    backup_data = [{'id': p['id'], 'name': p.get('name', ''),
+                                    'categoriesIds': p.get('categoriesIds', []),
+                                    'subcategoriesIds': p.get('subcategoriesIds', [])} for p in products]
+                    filename = create_backup_file('categorizer', estabelecimento_id, backup_data)
+                    self.log_message(f"Backup criado: {filename}", "info")
+                    socketio.emit('backup_created', {'filename': filename, 'automation': 'categorizer'})
+                except Exception as e:
+                    self.log_message(f"Aviso: não foi possível criar backup: {e}", "warning")
 
             cat_by_id = {c['id']: c for c in categories}
             sub_by_id = {s['id']: s for s in subcategories}
@@ -2566,9 +2579,10 @@ def start_automation():
         use_images = bool(data.get('use_images', False))
         only_raw_names = bool(data.get('only_raw_names', False))
         only_standardized = bool(data.get('only_standardized', False))
+        create_backup = bool(data.get('create_backup', True))
 
         def run_thread():
-            automator.run_automation(estabelecimento_id, categories, delay, dry_run, custom_prompt, filter_subcategory_id, use_images, only_raw_names, only_standardized)
+            automator.run_automation(estabelecimento_id, categories, delay, dry_run, custom_prompt, filter_subcategory_id, use_images, only_raw_names, only_standardized, create_backup=create_backup)
 
         thread = Thread(target=run_thread)
         thread.daemon = True
@@ -2838,6 +2852,7 @@ def start_categorization():
         max_categories = int(data.get('max_categories') or 2)
         if max_categories not in (1, 2):
             max_categories = 2
+        create_backup = bool(data.get('create_backup', True))
 
         def run():
             categorizer.run_categorization(
@@ -2851,6 +2866,7 @@ def start_categorization():
                 fallback_subcategory_id=fallback_subcategory_id,
                 review_categorized=review_categorized,
                 max_categories=max_categories,
+                create_backup=create_backup,
             )
 
         Thread(target=run, daemon=True).start()
@@ -3077,9 +3093,10 @@ def tagger_start():
         tag_brands = bool(data.get('tag_brands', False))
         categories = data.get('categories') or []
         filter_subcategory_id = (data.get('filter_subcategory_id') or '').strip() or None
+        create_backup = bool(data.get('create_backup', True))
 
         def run_thread():
-            tagger.run_tagging(estabelecimento_id, categories, delay, dry_run, use_images, overwrite, tag_characteristics, only_untagged, tag_brands, filter_subcategory_id)
+            tagger.run_tagging(estabelecimento_id, categories, delay, dry_run, use_images, overwrite, tag_characteristics, only_untagged, tag_brands, filter_subcategory_id, create_backup=create_backup)
 
         t = Thread(target=run_thread)
         t.daemon = True
@@ -3139,6 +3156,20 @@ def tagger_status():
 @app.route('/api/tagger/logs', methods=['GET'])
 def tagger_logs():
     return jsonify({'logs': tagger_state['logs']})
+
+
+# ============================================================
+# Rotas: Backup de produtos
+# ============================================================
+@app.route('/api/backup/download/<filename>')
+@login_required
+def download_backup(filename):
+    if '..' in filename or '/' in filename or '\\' in filename:
+        return jsonify({'error': 'Nome de arquivo inválido'}), 400
+    filepath = os.path.join('backups', filename)
+    if not os.path.exists(filepath):
+        return jsonify({'error': 'Backup não encontrado'}), 404
+    return send_file(filepath, as_attachment=True, download_name=filename, mimetype='application/json')
 
 
 # ============================================================

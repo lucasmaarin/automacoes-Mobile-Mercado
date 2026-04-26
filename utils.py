@@ -191,6 +191,46 @@ def record_daily_usage(tokens: int, cost: float):
 
 _load_daily_stats()
 
+# ============================================================
+# Backup de produtos
+# ============================================================
+BACKUP_DIR = 'backups'
+
+
+def create_backup_file(automation: str, estabelecimento_id: str, products: list) -> str:
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    ts = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    safe_est = estabelecimento_id.replace('/', '_')[:30]
+    filename = f"backup_{automation}_{safe_est}_{ts}.json"
+    filepath = os.path.join(BACKUP_DIR, filename)
+    payload = {
+        'automation': automation,
+        'estabelecimento_id': estabelecimento_id,
+        'created_at': datetime.now().isoformat(),
+        'count': len(products),
+        'products': products,
+    }
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2, default=str)
+    _cleanup_backups(automation)
+    return filename
+
+
+def _cleanup_backups(automation: str, keep: int = 10):
+    try:
+        files = sorted(
+            [f for f in os.listdir(BACKUP_DIR) if f.startswith(f'backup_{automation}_')],
+            reverse=True
+        )
+        for old in files[keep:]:
+            try:
+                os.remove(os.path.join(BACKUP_DIR, old))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 # Estado globals usados pelas classes e rotas
 automation_state = {
     'running': False,

@@ -543,7 +543,8 @@ MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambi
     def run_automation(self, estabelecimento_id: str, categories: List[str],
                        delay: float = 1.0, dry_run: bool = False, custom_prompt: str = None,
                        filter_subcategory_id: str = None, use_images: bool = False,
-                       only_raw_names: bool = False, only_standardized: bool = False):
+                       only_raw_names: bool = False, only_standardized: bool = False,
+                       create_backup: bool = True):
         try:
             self.tokens_used = 0
             self.estimated_cost = 0
@@ -553,8 +554,6 @@ MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambi
                 'total': 0, 'processed': 0, 'updated': 0,
                 'unchanged': 0, 'errors': 0, 'tokens_used': 0, 'estimated_cost': 0.0
             }
-            with _undo_lock:
-                undo_store['renamer'].clear()
             # Adiciona separador de execucao no log (nao limpa)
             sep = {'timestamp': datetime.now().strftime("%H:%M:%S"), 'message': '─' * 40, 'level': 'separator'}
             automation_state['logs'].append(sep)
@@ -568,13 +567,14 @@ MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambi
             except Exception:
                 pass
 
-            self.log_message(f"Iniciando renomeação para: {estabelecimento_id}", "info")
-            self.log_message(f"Categorias: {categories}", "info")
+            start_time = datetime.now().strftime("%H:%M:%S")
+            self.log_message(f"Processo iniciado às {start_time} — estabelecimento: {estabelecimento_id}", "info")
+            if categories:
+                self.log_message(f"Categorias: {categories}", "info")
             if filter_subcategory_id:
                 self.log_message(f"Filtro de subcategoria: {filter_subcategory_id}", "info")
             if dry_run:
                 self.log_message("MODO DRY RUN - Nenhuma atualização será feita", "warning")
-
             if use_images:
                 self.log_message("Analise de imagens ativada", "info")
             if only_raw_names:
@@ -586,6 +586,16 @@ MARCAS CONHECIDAS (use para identificar o tipo do produto quando o nome for ambi
                 self.log_message("Nenhum produto encontrado", "warning")
                 automation_state['running'] = False
                 return False
+
+            if create_backup:
+                try:
+                    from utils import create_backup_file
+                    backup_data = [{'id': p['id'], 'name': p['name']} for p in products]
+                    filename = create_backup_file('renamer', estabelecimento_id, backup_data)
+                    self.log_message(f"Backup criado: {filename}", "info")
+                    socketio.emit('backup_created', {'filename': filename, 'automation': 'renamer'})
+                except Exception as e:
+                    self.log_message(f"Aviso: não foi possível criar backup: {e}", "warning")
 
             if only_raw_names:
                 before = len(products)
