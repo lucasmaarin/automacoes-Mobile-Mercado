@@ -1907,109 +1907,110 @@ class ProductCategorizerAgent:
 
             def _cat_batch(args):
                 batch_start, batch = args
-                if not categorizer_state['running']:
-                    return
-                names = [p['name'] for p in batch]
-                self.update_progress({'id': batch[0]['id'], 'name': names[0], 'index': batch_start + 1, 'total': total})
-
-                if not categorizer_state['running']:
-                    return
-
-                if include_mercearia:
-                    # Batch com duas camadas: principal (nao-mercearia) + mercearia opcional
-                    multi_results = self.get_categories_batch_with_mercearia(names, categories, subcategories)
-                elif review_categorized:
-                    # Revisão: usa batch_multi com force_relocate para avaliar sem viés da categoria atual
-                    multi_results = self.get_categories_batch_multi(batch, categories, subcategories, force_relocate=True)
-                else:
-                    image_urls = [p.get('image_url') for p in batch] if use_images else None
-                    single_results = self.get_categories_batch(names, categories, subcategories, image_urls)
-                    multi_results = [[(c, s)] if c and s else [] for c, s in single_results]
-
-                for idx, (product, pairs) in enumerate(zip(batch, multi_results)):
+                try:
                     if not categorizer_state['running']:
                         return
-                    pid, pname = product['id'], product['name']
-                    i = batch_start + idx + 1
-                    self.log_message(f"[{i}/{total}] {pname}", "info")
+                    names = [p['name'] for p in batch]
+                    self.update_progress({'id': batch[0]['id'], 'name': names[0], 'index': batch_start + 1, 'total': total})
 
-                    # Dúvidas tratadas como "não encontrado" → vai para fallback
-                    pairs = self._filter_duvidas(pairs) if pairs else []
-                    if pairs and max_categories:
-                        pairs = pairs[:max_categories]
+                    if not categorizer_state['running']:
+                        return
 
-                    # Retry individual quando o batch falhou para este produto
-                    if not pairs:
-                        try:
-                            category_id, subcategory_id = self.get_category_and_subcategory(
-                                pname, categories, subcategories
-                            )
-                            if category_id and subcategory_id and not self._is_duvidas(category_id, subcategory_id):
-                                pairs = [(category_id, subcategory_id)]
-                        except Exception:
-                            pairs = []
+                    if include_mercearia:
+                        multi_results = self.get_categories_batch_with_mercearia(names, categories, subcategories)
+                    elif review_categorized:
+                        multi_results = self.get_categories_batch_multi(batch, categories, subcategories, force_relocate=True)
+                    else:
+                        image_urls = [p.get('image_url') for p in batch] if use_images else None
+                        single_results = self.get_categories_batch(names, categories, subcategories, image_urls)
+                        multi_results = [[(c, s)] if c and s else [] for c, s in single_results]
 
-                    with self._lock:
+                    for idx, (product, pairs) in enumerate(zip(batch, multi_results)):
+                        if not categorizer_state['running']:
+                            return
+                        pid, pname = product['id'], product['name']
+                        i = batch_start + idx + 1
+                        self.log_message(f"[{i}/{total}] {pname}", "info")
+
+                        pairs = self._filter_duvidas(pairs) if pairs else []
+                        if pairs and max_categories:
+                            pairs = pairs[:max_categories]
+
                         if not pairs:
-                            if outros_cat_id and outros_sub_id:
-                                reason = "nao foi possivel categorizar"
-                                self.log_message(f"  -> {outros_cat_name} / {outros_sub_name} (fallback — {reason})", "warning")
-                                ok = self.update_product_categories(
-                                    pid, estabelecimento_id,
-                                    outros_cat_id, outros_sub_id,
-                                    outros_cat_name, outros_sub_name, dry_run
+                            try:
+                                category_id, subcategory_id = self.get_category_and_subcategory(
+                                    pname, categories, subcategories
                                 )
-                                _tick_product(ok)
-                            else:
-                                self.log_message(f"  Sem fallback configurado — produto ignorado", "warning")
-                                categorizer_state['progress']['errors'] += 1
-                                categorizer_state['progress']['processed'] += 1
-                        else:
-                            # No modo revisao, pula produtos que já estão na categoria correta
-                            if review_categorized:
-                                current_cats = set(product.get('categories_ids') or [])
-                                current_subs = set(product.get('subcategories_ids') or [])
-                                new_cats = {c for c, _ in pairs}
-                                new_subs = {s for _, s in pairs}
-                                if new_cats == current_cats and new_subs == current_subs:
-                                    self.log_message(f"  [ok] ja esta na categoria correta", "info")
+                                if category_id and subcategory_id and not self._is_duvidas(category_id, subcategory_id):
+                                    pairs = [(category_id, subcategory_id)]
+                            except Exception:
+                                pairs = []
+
+                        with self._lock:
+                            if not pairs:
+                                if outros_cat_id and outros_sub_id:
+                                    self.log_message(f"  -> {outros_cat_name} / {outros_sub_name} (fallback — nao foi possivel categorizar)", "warning")
+                                    ok = self.update_product_categories(
+                                        pid, estabelecimento_id,
+                                        outros_cat_id, outros_sub_id,
+                                        outros_cat_name, outros_sub_name, dry_run
+                                    )
+                                    _tick_product(ok)
+                                else:
+                                    self.log_message(f"  Sem fallback configurado — produto ignorado", "warning")
+                                    categorizer_state['progress']['errors'] += 1
                                     categorizer_state['progress']['processed'] += 1
-                                    self.update_progress()
-                                    continue
-                                old_label = ', '.join(
-                                    f"{cat_by_id.get(c,{}).get('name',c)}/{sub_by_id.get(s,{}).get('name',s)}"
-                                    for c in current_cats for s in current_subs
-                                ) or 'sem categoria'
-                                new_label = ' + '.join(
-                                    f"{cat_by_id.get(c,{}).get('name',c)}/{sub_by_id.get(s,{}).get('name',s)}"
-                                    for c, s in pairs
-                                )
-                                self.log_message(f"  REALOCADO: {old_label} → {new_label}", "warning")
                             else:
-                                labels = ' + '.join(
-                                    f"{cat_by_id.get(c,{}).get('name',c)} / {sub_by_id.get(s,{}).get('name',s)}"
-                                    for c, s in pairs
-                                )
-                                self.log_message(f"  -> {labels}", "success")
-                            if len(pairs) == 1:
-                                c, s = pairs[0]
-                                ok = self.update_product_categories(
-                                    pid, estabelecimento_id,
-                                    c, s,
-                                    cat_by_id.get(c,{}).get('name',c),
-                                    sub_by_id.get(s,{}).get('name',s),
-                                    dry_run
-                                )
-                            else:
-                                ok = self.update_product_categories_multi(
-                                    pid, estabelecimento_id,
-                                    pairs, cat_by_id, sub_by_id,
-                                    dry_run, history_key='categorizer',
-                                    log_fn=self.log_message
-                                )
-                            _tick_product(ok)
-                        categorizer_state['progress']['tokens_used'] = self.tokens_used
-                        categorizer_state['progress']['estimated_cost'] = self.estimated_cost
+                                if review_categorized:
+                                    current_cats = set(product.get('categories_ids') or [])
+                                    current_subs = set(product.get('subcategories_ids') or [])
+                                    new_cats = {c for c, _ in pairs}
+                                    new_subs = {s for _, s in pairs}
+                                    if new_cats == current_cats and new_subs == current_subs:
+                                        self.log_message(f"  [ok] ja esta na categoria correta", "info")
+                                        categorizer_state['progress']['processed'] += 1
+                                        self.update_progress()
+                                        continue
+                                    old_label = ', '.join(
+                                        f"{cat_by_id.get(c,{}).get('name',c)}/{sub_by_id.get(s,{}).get('name',s)}"
+                                        for c in current_cats for s in current_subs
+                                    ) or 'sem categoria'
+                                    new_label = ' + '.join(
+                                        f"{cat_by_id.get(c,{}).get('name',c)}/{sub_by_id.get(s,{}).get('name',s)}"
+                                        for c, s in pairs
+                                    )
+                                    self.log_message(f"  REALOCADO: {old_label} → {new_label}", "warning")
+                                else:
+                                    labels = ' + '.join(
+                                        f"{cat_by_id.get(c,{}).get('name',c)} / {sub_by_id.get(s,{}).get('name',s)}"
+                                        for c, s in pairs
+                                    )
+                                    self.log_message(f"  -> {labels}", "success")
+                                if len(pairs) == 1:
+                                    c, s = pairs[0]
+                                    ok = self.update_product_categories(
+                                        pid, estabelecimento_id,
+                                        c, s,
+                                        cat_by_id.get(c,{}).get('name',c),
+                                        sub_by_id.get(s,{}).get('name',s),
+                                        dry_run
+                                    )
+                                else:
+                                    ok = self.update_product_categories_multi(
+                                        pid, estabelecimento_id,
+                                        pairs, cat_by_id, sub_by_id,
+                                        dry_run, history_key='categorizer',
+                                        log_fn=self.log_message
+                                    )
+                                _tick_product(ok)
+                            categorizer_state['progress']['tokens_used'] = self.tokens_used
+                            categorizer_state['progress']['estimated_cost'] = self.estimated_cost
+                        self.update_progress()
+                except Exception as e:
+                    self.log_message(f"Erro no batch #{batch_start + 1}: {e}", "error")
+                    with self._lock:
+                        categorizer_state['progress']['errors'] += len(batch)
+                        categorizer_state['progress']['processed'] += len(batch)
                     self.update_progress()
 
             with ThreadPoolExecutor(max_workers=1) as executor:
