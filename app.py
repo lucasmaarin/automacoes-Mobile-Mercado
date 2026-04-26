@@ -1018,14 +1018,7 @@ class ProductCategorizerAgent:
             return None, None
 
     # Sufixo de formato adicionado ao cat_system_prompt nas chamadas em batch.
-    _BATCH_FORMAT_SUFFIX = (
-        "\n\n---\n"
-        "Para esta tarefa de batch, responda SOMENTE com um objeto JSON:\n"
-        "{\"1\": \"subcategoria_id\", \"2\": \"subcategoria_id\", ...}\n"
-        "A chave é o número do produto (começando em 1). Sem markdown, sem explicações.\n"
-        "IMPORTANTE: Use EXCLUSIVAMENTE os IDs exatos da lista de subcategorias fornecida pelo usuário. "
-        "NÃO invente IDs, NÃO use IDs de memória ou conhecimento anterior."
-    )
+    _BATCH_FORMAT_SUFFIX = ""  # instruções de formato estão no user message
 
     def get_categories_batch(self, product_names, categories, subcategories, image_urls=None):
         """Avalia subcategoria primeiro em batch; a categoria é derivada da subcategoria. Retorna lista de (cat_id, sub_id)."""
@@ -1037,10 +1030,9 @@ class ProductCategorizerAgent:
         )
         header = (
             f"SUBCATEGORIAS VÁLIDAS (id|nome|categoria):\n{subs_text}\n\n"
-            f"Use SOMENTE os IDs exatos da lista acima. Não invente IDs.\n"
-            f"Para cada produto abaixo, responda SOMENTE com JSON:\n"
-            f"{{\"1\": \"subcategoria_id\", \"2\": \"subcategoria_id\", ...}}\n"
-            f"A chave é o número do produto. Sem markdown, sem explicações.\n\n"
+            f"Use EXCLUSIVAMENTE os IDs exatos da lista acima. Não invente IDs. Não use IDs de memória.\n"
+            f"Responda SOMENTE com JSON: {{\"1\": \"id\", \"2\": \"id\", ...}}\n"
+            f"Chave = número do produto. Sem markdown, sem explicações.\n\n"
             f"Produtos:"
         )
         has_images = bool(image_urls and any(image_urls))
@@ -1226,15 +1218,7 @@ class ProductCategorizerAgent:
             return False
 
     # Sufixo de formato para batch multi (até 2 subs por produto)
-    _BATCH_FORMAT_SUFFIX_MULTI = (
-        "\n\n---\n"
-        "Para esta tarefa de batch, responda SOMENTE com um objeto JSON:\n"
-        "{\"1\": [\"sub_id1\", \"sub_id2\"], \"2\": [\"sub_id3\"], ...}\n"
-        "Cada produto recebe uma lista com 1 ou 2 subcategorias (maximo 2) que melhor representam o item.\n"
-        "Use 2 subcategorias APENAS se o produto genuinamente pertence a 2 categorias distintas.\n"
-        "Sem markdown, sem explicacoes.\n"
-        "IMPORTANTE: Use EXCLUSIVAMENTE os IDs exatos da lista fornecida. Nao invente IDs."
-    )
+    _BATCH_FORMAT_SUFFIX_MULTI = ""  # instruções de formato estão no user message
 
     def get_categories_batch_multi(self, products, categories, subcategories, force_relocate=False):
         """Para o modo realocar: retorna ate 2 (cat_id, sub_id) por produto.
@@ -1259,38 +1243,40 @@ class ProductCategorizerAgent:
             if cat_name or sub_name:
                 ctx = f" [atual: {cat_name}{(' / ' + sub_name) if sub_name else ''}]"
             lines.append(f"{i+1}. {p['name']}{ctx}")
+        fmt = (
+            "Responda SOMENTE com JSON: {\"1\": [\"sub_id\"], \"2\": [\"sub_id1\", \"sub_id2\"], ...}\n"
+            "Use 2 subcategorias APENAS se o produto genuinamente pertence a 2 categorias distintas.\n"
+            "Use EXCLUSIVAMENTE os IDs exatos da lista acima. Sem markdown, sem explicações.\n\n"
+        )
         if force_relocate:
             instruction = (
                 f"SUBCATEGORIAS VALIDAS (id|nome|categoria):\n{subs_text}\n\n"
+                f"{fmt}"
                 f"ATENCAO: os produtos abaixo estao INCORRETAMENTE categorizados. "
-                f"A categoria entre colchetes esta ERRADA e voce deve ignorá-la como sugestao. "
-                f"Analise somente o NOME do produto e escolha 1 ou 2 subcategorias corretas da lista acima. "
-                f"Siga rigorosamente as regras do prompt — se um produto nao e brinquedo, NAO use subcategorias de Brinquedos.\n"
-                f"Retorne o ID exato de cada subcategoria — a categoria sera derivada automaticamente.\n\n"
+                f"A categoria entre colchetes esta ERRADA — ignore-a. "
+                f"Analise somente o NOME do produto e escolha as subcategorias corretas.\n\n"
                 f"Produtos:\n" + "\n".join(lines)
             )
         else:
             instruction = (
                 f"SUBCATEGORIAS VALIDAS (id|nome|categoria):\n{subs_text}\n\n"
-                f"Para cada produto abaixo, escolha 1 ou 2 subcategorias que melhor combinam com ele.\n"
-                f"A categoria atual do produto e exibida entre colchetes como referencia.\n"
-                f"Retorne o ID exato de cada subcategoria — a categoria sera derivada automaticamente.\n\n"
+                f"{fmt}"
+                f"A categoria atual do produto e exibida entre colchetes como referencia.\n\n"
                 f"Produtos:\n" + "\n".join(lines)
             )
-        header = instruction
         results = [[] for _ in products]
         try:
-            raw = self._call_openai(header, max_tokens=50 * len(products),
-                                    system_prompt=self.cat_system_prompt + self._BATCH_FORMAT_SUFFIX_MULTI)
+            raw = self._call_openai(instruction, max_tokens=50 * len(products),
+                                    system_prompt=self.cat_system_prompt)
         except Exception as e:
             self.log_message(f"Erro OpenAI batch multi: {e}", "error")
             return results
-        text = raw.strip()
-        text = re.sub(r'```[a-z]*\n?', '', text).strip()
-        json_match = re.search(r'\{[^\{\}]+\}', text, re.DOTALL)
-        if json_match:
+        text = re.sub(r'```[a-z]*\n?', '', raw.strip()).strip()
+        start_idx = text.find('{')
+        end_idx = text.rfind('}')
+        if start_idx != -1 and end_idx > start_idx:
             try:
-                mapping = json.loads(json_match.group())
+                mapping = json.loads(text[start_idx:end_idx + 1])
                 for key, val in mapping.items():
                     try:
                         n = int(key) - 1
@@ -1310,16 +1296,7 @@ class ProductCategorizerAgent:
         return results
 
     # Sufixo de formato para batch com mercearia separada
-    _BATCH_FORMAT_SUFFIX_MERCEARIA = (
-        "\n\n---\n"
-        "Para esta tarefa de batch, responda SOMENTE com um objeto JSON:\n"
-        "{\"1\": [\"sub_principal\", \"sub_mercearia_ou_null\"], \"2\": [\"sub_principal\", null], ...}\n"
-        "Elemento 0: ID da subcategoria PRINCIPAL que mais combina (lista PRINCIPAL — obrigatorio).\n"
-        "Elemento 1: ID da subcategoria de MERCEARIA que mais combina (lista MERCEARIA), ou null se nao se aplica.\n"
-        "So use uma sub de mercearia se o produto realmente tem equivalente nessa lista.\n"
-        "Sem markdown, sem explicacoes.\n"
-        "IMPORTANTE: Use EXCLUSIVAMENTE os IDs exatos das listas fornecidas. Nao invente IDs."
-    )
+    _BATCH_FORMAT_SUFFIX_MERCEARIA = ""  # instruções de formato estão no user message
 
     def get_categories_batch_with_mercearia(self, product_names, categories, subcategories):
         """Retorna lista de pares por produto: [(cat_principal, sub_principal)] ou
@@ -1340,21 +1317,25 @@ class ProductCategorizerAgent:
         header = (
             f"SUBCATEGORIAS PRINCIPAIS (id|nome|categoria):\n{non_merc_text}\n\n"
             f"SUBCATEGORIAS MERCEARIA (id|nome):\n{merc_text}\n\n"
+            f"Responda SOMENTE com JSON: {{\"1\": [\"sub_principal\", \"sub_mercearia_ou_null\"], ...}}\n"
+            f"Elemento 0: ID da sub PRINCIPAL (obrigatório). Elemento 1: ID da sub MERCEARIA ou null.\n"
+            f"Use EXCLUSIVAMENTE os IDs exatos das listas acima. Sem markdown, sem explicações.\n\n"
             f"Produtos:\n{numbered}"
         )
         results = [[] for _ in product_names]
         try:
             raw = self._call_openai(header, max_tokens=50 * len(product_names),
-                                    system_prompt=self.cat_system_prompt + self._BATCH_FORMAT_SUFFIX_MERCEARIA)
+                                    system_prompt=self.cat_system_prompt)
         except Exception as e:
             self.log_message(f"Erro OpenAI batch mercearia: {e}", "error")
             return results
         text = re.sub(r'```[a-z]*\n?', '', raw.strip()).strip()
-        json_match = re.search(r'\{[^\{\}]+\}', text, re.DOTALL)
-        if not json_match:
+        start_idx = text.find('{')
+        end_idx = text.rfind('}')
+        if start_idx == -1 or end_idx <= start_idx:
             return results
         try:
-            mapping = json.loads(json_match.group())
+            mapping = json.loads(text[start_idx:end_idx + 1])
         except Exception:
             return results
         for key, val in mapping.items():
@@ -1890,7 +1871,7 @@ class ProductCategorizerAgent:
             }
             self.update_progress()
 
-            BATCH_SIZE = 10
+            BATCH_SIZE = 20
             batches = [products[s:s + BATCH_SIZE] for s in range(0, total, BATCH_SIZE)]
             self.log_message(
                 f"Processando {total} produtos em {len(batches)} lotes de {BATCH_SIZE}", "info"
