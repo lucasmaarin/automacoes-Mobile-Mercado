@@ -324,8 +324,6 @@ class ProductTagger:
             data = doc.to_dict()
             if not data.get('name'):
                 continue
-            if data.get('isTrashed', False):
-                continue
             if categories:
                 cats = data.get('categoriesIds') or []
                 if not any(c in categories for c in cats):
