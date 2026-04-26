@@ -878,7 +878,13 @@ class ProductCategorizerAgent:
                     imgs = data.get('images') or []
                     if imgs and isinstance(imgs[0], dict):
                         image_url = imgs[0].get('fileUrl')
-                products.append({'id': doc.id, 'name': data['name'], 'image_url': image_url})
+                products.append({
+                    'id': doc.id,
+                    'name': data['name'],
+                    'image_url': image_url,
+                    'categories_ids': data.get('categoriesIds') or [],
+                    'subcategories_ids': data.get('subcategoriesIds') or [],
+                })
             filtro = []
             if only_uncategorized:
                 filtro.append('apenas sem categoria')
@@ -1053,17 +1059,17 @@ class ProductCategorizerAgent:
         text_only_prompt = f"{header}\n{numbered}"
         try:
             if has_images:
-                raw = self._call_openai('', max_tokens=30 * len(product_names), content=content,
+                raw = self._call_openai('', max_tokens=50 * len(product_names), content=content,
                                         system_prompt=self.cat_system_prompt + self._BATCH_FORMAT_SUFFIX)
             else:
-                raw = self._call_openai(text_only_prompt, max_tokens=30 * len(product_names),
+                raw = self._call_openai(text_only_prompt, max_tokens=50 * len(product_names),
                                         system_prompt=self.cat_system_prompt + self._BATCH_FORMAT_SUFFIX)
         except Exception as e:
             err_str = str(e).lower()
             if has_images and ('image' in err_str or 'downloading' in err_str or '400' in err_str):
                 self.log_message(f"Erro ao processar imagens do batch, reprocessando sem imagens...", "warning")
                 try:
-                    raw = self._call_openai(text_only_prompt, max_tokens=30 * len(product_names),
+                    raw = self._call_openai(text_only_prompt, max_tokens=50 * len(product_names),
                                             system_prompt=self.cat_system_prompt + self._BATCH_FORMAT_SUFFIX)
                 except Exception as e2:
                     self.log_message(f"Erro OpenAI no batch (sem imagens): {e2}", "error")
@@ -1089,10 +1095,12 @@ class ProductCategorizerAgent:
             text = re.sub(r'```[a-z]*\n?', '', text).strip()
 
             # 1) Tenta JSON: {"1": "sub_id", "2": "sub_id", ...}
-            json_match = re.search(r'\{[^{}]+\}', text, re.DOTALL)
-            if json_match:
+            # Extrai o bloco JSON entre o primeiro { e o último } para tolerar texto extra e chaves aninhadas
+            start_idx = text.find('{')
+            end_idx = text.rfind('}')
+            if start_idx != -1 and end_idx > start_idx:
                 try:
-                    mapping = json.loads(json_match.group())
+                    mapping = json.loads(text[start_idx:end_idx + 1])
                     for key, val in mapping.items():
                         try:
                             n = int(key) - 1
@@ -1149,7 +1157,7 @@ class ProductCategorizerAgent:
                 f"{text_only_prompt}"
             )
             try:
-                raw2 = self._call_openai(retry_prompt, max_tokens=30 * len(product_names),
+                raw2 = self._call_openai(retry_prompt, max_tokens=50 * len(product_names),
                                          system_prompt=self.cat_system_prompt + self._BATCH_FORMAT_SUFFIX)
                 results = _parse_batch_raw(raw2)
                 if all(r == (None, None) for r in results):
